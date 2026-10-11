@@ -2,6 +2,8 @@
 #include "dsp/Maps.h"
 
 #if JUCE_ANDROID || JUCE_IOS
+ #include <juce_audio_devices/juce_audio_devices.h>
+ #include <juce_audio_utils/juce_audio_utils.h>
  #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 #endif
 
