@@ -634,50 +634,95 @@ juce::String Content::dstShort (int d) const
     return n[juce::jlimit (0, zen::numDst - 1, d)];
 }
 
+namespace
+{
+    std::map<int, juce::Image>& slabMemory()   // shared between editor openings
+    {
+        static std::map<int, juce::Image> m;
+        return m;
+    }
+    juce::File slabFile (int pixels)
+    {
+        // bump the version when the wood or the lettering changes
+        return ZenProcessor::dataFolder().getChildFile ("slab-v3-" + juce::String (pixels) + ".png");
+    }
+}
+
 void Content::setRenderScale (float ppu)
 {
-    const float want = juce::jlimit (640.0f, 2560.0f, std::round (980.0f * ppu / 64.0f) * 64.0f);
-    if (std::abs (want - slabPixels) < 1.0f && slab.isValid()) return;
-    slabPixels = want;
+   #if JUCE_ANDROID || JUCE_IOS
+    const float cap = 3072.0f;
+   #else
+    const float cap = 2560.0f;
+   #endif
+    const int want = (int) juce::jlimit (640.0f, cap, std::round (980.0f * ppu / 128.0f) * 128.0f);
+    if (want == (int) slabPixels && slab.isValid()) return;
+    slabPixels = (float) want;
+    ++renderGeneration;
 
-    static juce::Image cache;   // shared: reopening the editor is instant
-    if (cache.isValid() && cache.getWidth() == (int) want) { slab = cache; repaint(); return; }
+    auto& mem = slabMemory();
+    if (auto it = mem.find (want); it != mem.end()) { slab = it->second; repaint(); return; }
 
-    // the slab is also kept on disk, so the first open after a restart is quick too
-    // (bump the version when the wood or the lettering changes)
-    const auto file = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                          .getChildFile ("Zenthesizer").getChildFile ("slab-v3-" + juce::String ((int) want) + ".png");
+    const auto file = slabFile (want);
     if (file.existsAsFile())
     {
         auto img = juce::ImageFileFormat::loadFrom (file);
-        if (img.isValid() && img.getWidth() == (int) want)
+        if (img.isValid() && img.getWidth() == want)
         {
-            slab = cache = img.convertedToFormat (juce::Image::ARGB);
+            slab = mem[want] = img.convertedToFormat (juce::Image::ARGB);
             repaint();
             return;
         }
     }
 
-    slab = wood::render ((int) want);
+    if (! slab.isValid())
+    {
+        finishSlab (wood::render (want), want);   // nothing to show yet: draw it now
+        return;
+    }
 
+    // keep showing the current wood (a little soft) while the sharper one renders
+    const int gen = renderGeneration;
+    juce::Thread::launch ([safe = juce::Component::SafePointer<Content> (this), want, gen]
+    {
+        auto img = wood::render (want);
+        juce::MessageManager::callAsync ([safe, img, want, gen]
+        {
+            if (safe != nullptr && safe->renderGeneration == gen) safe->finishSlab (img, want);
+        });
+    });
+}
+
+void Content::finishSlab (juce::Image img, int want)
+{
     // static burned lettering, baked into the slab
     {
-        juce::Graphics g (slab);
-        g.addTransform (juce::AffineTransform::scale (want / 980.0f));
+        juce::Graphics g (img);
+        g.addTransform (juce::AffineTransform::scale ((float) want / 980.0f));
         theme::arcText (g, "zenthesizer", centre, 368.0f, 0.0f, theme::font (theme::FontKind::serif, 44.0f));
         theme::arcText (g, "TOUCH  SYNTHESIZER", centre, 386.0f, juce::degreesToRadians (-56.0f), theme::font (theme::FontKind::sans, 11.0f, 0.24f));
         theme::arcText (g, "VISUALS", centre, 392.0f, juce::degreesToRadians (60.0f), theme::font (theme::FontKind::sans, 11.0f, 0.24f));
         theme::arcText (g, "TIMBRE", centre, 250.0f, juce::MathConstants<float>::pi, theme::font (theme::FontKind::sans, 11.0f, 0.24f), theme::burn, true);
     }
-    cache = slab;
-
-    if (file.getParentDirectory().createDirectory())
-    {
-        file.deleteFile();
-        juce::FileOutputStream os (file);
-        if (os.openedOk()) juce::PNGImageFormat().writeImageToStream (slab, os);
-    }
+    auto& mem = slabMemory();
+    if (mem.size() > 2) mem.erase (mem.begin());
+    mem[want] = img;
+    slab = img;
     repaint();
+
+    // save a copy for next time, off the message thread
+    juce::Thread::launch ([img, want]
+    {
+        const auto file = slabFile (want);
+        if (! file.getParentDirectory().createDirectory()) return;
+        const auto tmp = file.getSiblingFile (file.getFileName() + ".part");
+        tmp.deleteFile();
+        {
+            juce::FileOutputStream os (tmp);
+            if (! os.openedOk() || ! juce::PNGImageFormat().writeImageToStream (img, os)) return;
+        }
+        tmp.moveFileTo (file);
+    });
 }
 
 void Content::paint (juce::Graphics& g)
@@ -930,7 +975,7 @@ ZenEditor::ZenEditor (ZenProcessor& p) : AudioProcessorEditor (p), content (p)
     addAndMakeVisible (content);
     setResizable (true, true);
    #if JUCE_ANDROID || JUCE_IOS
-    // the app fills the screen; the slab is centred and the corners hold the device buttons
+    // the app fills the screen; the slab is centred and can be zoomed
     constrainer.setSizeLimits (200, 200, 8000, 8000);
     for (auto* b : { &midiBtn, &audioBtn })
     {
@@ -947,6 +992,8 @@ ZenEditor::ZenEditor (ZenProcessor& p) : AudioProcessorEditor (p), content (p)
         if (auto* holder = juce::StandalonePluginHolder::getInstance())
             holder->showAudioSettingsDialog();
     };
+    juce::Desktop::getInstance().addGlobalMouseListener (&gestures);
+    content.showHint ("pinch the wood to zoom  -  double-tap the wood to jump in or out");
    #else
     constrainer.setFixedAspectRatio (1.0);
     constrainer.setSizeLimits (560, 560, 1400, 1400);
@@ -955,22 +1002,161 @@ ZenEditor::ZenEditor (ZenProcessor& p) : AudioProcessorEditor (p), content (p)
     setSize (860, 860);
 }
 
+ZenEditor::~ZenEditor()
+{
+   #if JUCE_ANDROID || JUCE_IOS
+    juce::Desktop::getInstance().removeGlobalMouseListener (&gestures);
+    WoodTouch::fingersOnWood = 0;
+   #endif
+}
+
 void ZenEditor::resized()
 {
     const float side = (float) std::min (getWidth(), getHeight());
-    const float scale = side / (float) designSize;
-    const float ox = ((float) getWidth() - side) * 0.5f, oy = ((float) getHeight() - side) * 0.5f;
-    content.setTransform (juce::AffineTransform::scale (scale).translated (ox, oy));
+    const float oldBase = baseScale;
+    baseScale = side / (float) designSize;
+    if (zoom <= 1.001f)
+        origin = { ((float) getWidth() - side) * 0.5f, ((float) getHeight() - side) * 0.5f };
+    else
+        origin = origin * (baseScale / std::max (0.0001f, oldBase));
 
    #if JUCE_ANDROID || JUCE_IOS
-    // the square's top corners are bare table, outside the round slab
-    const int bw = juce::roundToInt (64.0f * std::max (0.75f, scale)), bh = juce::roundToInt (58.0f * std::max (0.75f, scale));
-    midiBtn.dome = audioBtn.dome = 26.0f * std::max (0.75f, scale);
-    midiBtn.setBounds (juce::roundToInt (ox + 14.0f * scale), juce::roundToInt (oy + 14.0f * scale), bw, bh);
-    audioBtn.setBounds (juce::roundToInt (ox + side - 14.0f * scale) - bw, juce::roundToInt (oy + 14.0f * scale), bw, bh);
+    // the device buttons sit in the screen's top corners, outside the round slab
+    const float bs = std::max (0.75f, baseScale);
+    const int bw = juce::roundToInt (64.0f * bs), bh = juce::roundToInt (58.0f * bs);
+    midiBtn.dome = audioBtn.dome = 26.0f * bs;
+    midiBtn.setBounds (6, 6, bw, bh);
+    audioBtn.setBounds (getWidth() - 6 - bw, 6, bw, bh);
    #endif
-
-    float physical = 1.0f;
-    if (auto* disp = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) physical = (float) disp->scale;
-    content.setRenderScale (scale * std::max (1.0f, physical));
+    applyZoom (true);
 }
+
+void ZenEditor::clampOrigin()
+{
+    const float size = (float) designSize * baseScale * zoom;
+    auto axis = [] (float o, float extent, float avail)
+    {
+        if (extent <= avail) return (avail - extent) * 0.5f;
+        return juce::jlimit (avail - extent, 0.0f, o);
+    };
+    origin = { axis (origin.x, size, (float) getWidth()), axis (origin.y, size, (float) getHeight()) };
+}
+
+void ZenEditor::applyZoom (bool sharpen)
+{
+    clampOrigin();
+    const float k = baseScale * zoom;
+    content.setTransform (juce::AffineTransform::scale (k).translated (origin));
+   #if JUCE_ANDROID || JUCE_IOS
+    midiBtn.toFront (false);
+    audioBtn.toFront (false);
+   #endif
+    if (sharpen)
+    {
+        float physical = 1.0f;
+        if (auto* disp = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) physical = (float) disp->scale;
+        content.setRenderScale (k * std::max (1.0f, physical));
+    }
+}
+
+// Zoom so that the slab point `anchorContent` (in 0..980 units) sits under `editorPos`.
+void ZenEditor::zoomAround (juce::Point<float> editorPos, float newZoom, juce::Point<float> anchorContent)
+{
+    zoom = juce::jlimit (1.0f, 4.0f, newZoom);
+    origin = editorPos - anchorContent * (baseScale * zoom);
+}
+
+#if JUCE_ANDROID || JUCE_IOS
+void ZenEditor::Gestures::beginPan (int index)
+{
+    if (auto it = touches.find (index); it != touches.end())
+    {
+        panStartPos = it->second;
+        panStartOrigin = ed.origin;
+    }
+}
+
+void ZenEditor::Gestures::mouseDown (const juce::MouseEvent& e)
+{
+    if (! e.source.isTouch()) return;
+    const int idx = e.source.getIndex();
+    const auto pos = ed.getLocalPoint (nullptr, e.getScreenPosition()).toFloat();
+    touches[idx] = pos;
+    if (e.eventComponent == &ed.content) wood.insert (idx);
+    WoodTouch::fingersOnWood = (int) wood.size();
+
+    if (! wood.empty() && touches.size() >= 2 && ! pinching)
+    {
+        // a pinch: the wood finger and the newest finger
+        pinchA = *wood.begin();
+        pinchB = idx != pinchA ? idx : touches.rbegin()->first;
+        const auto a = touches[pinchA], b = touches[pinchB];
+        startDist = std::max (20.0f, a.getDistanceFrom (b));
+        startZoom = ed.zoom;
+        anchor = ((a + b) * 0.5f - ed.origin) / (ed.baseScale * ed.zoom);
+        pinching = true;
+        return;
+    }
+
+    if (wood.count (idx) != 0 && touches.size() == 1)
+    {
+        const auto now = juce::Time::getMillisecondCounter();
+        if (now - lastTap < 320 && pos.getDistanceFrom (lastTapPos) < 50.0f)
+        {
+            // double-tap: jump in around the tap, or back out
+            const auto at = (pos - ed.origin) / (ed.baseScale * ed.zoom);
+            if (ed.zoom < 1.5f) ed.zoomAround (pos, 2.5f, at);
+            else { ed.zoom = 1.0f; }
+            ed.applyZoom (true);
+            lastTap = 0;
+        }
+        else
+        {
+            lastTap = now;
+            lastTapPos = pos;
+        }
+        beginPan (idx);
+    }
+}
+
+void ZenEditor::Gestures::mouseDrag (const juce::MouseEvent& e)
+{
+    if (! e.source.isTouch()) return;
+    const int idx = e.source.getIndex();
+    if (touches.count (idx) == 0) return;
+    touches[idx] = ed.getLocalPoint (nullptr, e.getScreenPosition()).toFloat();
+
+    if (pinching && touches.count (pinchA) != 0 && touches.count (pinchB) != 0)
+    {
+        const auto a = touches[pinchA], b = touches[pinchB];
+        ed.zoomAround ((a + b) * 0.5f, startZoom * a.getDistanceFrom (b) / startDist, anchor);
+        ed.applyZoom (false);
+    }
+    else if (! pinching && wood.count (idx) != 0 && touches.size() == 1 && ed.zoom > 1.01f)
+    {
+        ed.origin = panStartOrigin + (touches[idx] - panStartPos);
+        ed.applyZoom (false);
+    }
+}
+
+void ZenEditor::Gestures::mouseUp (const juce::MouseEvent& e)
+{
+    if (! e.source.isTouch()) return;
+    const int idx = e.source.getIndex();
+    touches.erase (idx);
+    wood.erase (idx);
+
+    if (pinching && (idx == pinchA || idx == pinchB))
+    {
+        pinching = false;
+        if (! wood.empty()) beginPan (*wood.begin());   // keep panning with the finger that's left
+    }
+    if (juce::Desktop::getInstance().getNumDraggingMouseSources() <= 1 && touches.empty())
+    {
+        wood.clear();
+        pinching = false;
+        ed.applyZoom (true);   // re-render the wood sharp for this zoom
+    }
+    WoodTouch::fingersOnWood = (int) wood.size();
+}
+#endif

@@ -59,6 +59,7 @@ The same synth, as a tablet app (`Zenthesizer.jucer`, built by `.github/workflow
 Plays through the tablet's audio, takes MIDI from USB (Launchkey over USB-C) or Bluetooth (the
 BLUETOOTH button, top left). AUDIO (top right) picks the output and buffer size.
 Long-press a timbre plate to assign it (instead of right-click).
+Pinch the bare wood to zoom (up to 4x), drag the wood to move around, double-tap the wood to jump in or out.
 
 The APK is signed with `android/zen.keystore` (password `zenthesizer`), kept in the repo so every
 build can install over the last one.

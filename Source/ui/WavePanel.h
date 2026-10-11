@@ -78,6 +78,7 @@ public:
 
     void mouseDown (const juce::MouseEvent& e) override
     {
+        if (WoodTouch::claims (e)) return;   // part of a pinch on the wood
         const auto p = e.position;
         if (strip.contains (p))
         {

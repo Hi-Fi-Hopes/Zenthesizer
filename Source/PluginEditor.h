@@ -5,6 +5,8 @@
 #include "ui/Widgets.h"
 #include "ui/Wood.h"
 #include "ui/WavePanel.h"
+#include <map>
+#include <set>
 
 //==============================================================================
 // Engine A or B: a carved outline, a little glass screen, four selector buttons and four knobs.
@@ -65,6 +67,7 @@ public:
 
     enum Page { synth = 0, mod, waves, fx, play, stage, numPages };
     void showPage (int);
+    void showHint (const juce::String&);
 
 private:
     void timerCallback() override;
@@ -131,7 +134,8 @@ private:
     juce::String hint;
     juce::uint32 hintTime = 0;
     WavePanel wavePanel;
-    void showHint (const juce::String&);
+    int renderGeneration = 0;
+    void finishSlab (juce::Image, int pixels);
 };
 
 //==============================================================================
@@ -145,11 +149,42 @@ public:
     static constexpr int designSize = 980;
     Content& getContent() { return content; }
 
+    ~ZenEditor() override;
+
 private:
     Content content;
     juce::ComponentBoundsConstrainer constrainer;
     juce::TooltipWindow tooltips { this, 700 };
+
+    // zoom: the slab is drawn at baseScale * zoom, with its top-left corner at origin
+    float baseScale = 1.0f, zoom = 1.0f;
+    juce::Point<float> origin;
+    void applyZoom (bool sharpen);
+    void clampOrigin();
+    void zoomAround (juce::Point<float> editorPos, float newZoom, juce::Point<float> anchorContent);
+
    #if JUCE_ANDROID || JUCE_IOS
     SteelButton midiBtn { "BLUETOOTH", 26.0f }, audioBtn { "AUDIO", 26.0f };
+
+    // Pinch, drag and double-tap on bare wood (listens to every touch on screen).
+    struct Gestures : public juce::MouseListener
+    {
+        explicit Gestures (ZenEditor& e) : ed (e) {}
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDrag (const juce::MouseEvent&) override;
+        void mouseUp (const juce::MouseEvent&) override;
+
+        ZenEditor& ed;
+        std::map<int, juce::Point<float>> touches;
+        std::set<int> wood;
+        bool pinching = false;
+        int pinchA = -1, pinchB = -1;
+        float startDist = 1.0f, startZoom = 1.0f;
+        juce::Point<float> anchor, panStartPos, panStartOrigin;
+        juce::uint32 lastTap = 0;
+        juce::Point<float> lastTapPos;
+        void beginPan (int index);
+    };
+    Gestures gestures { *this };
    #endif
 };

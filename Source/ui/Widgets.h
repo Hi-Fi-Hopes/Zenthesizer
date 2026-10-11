@@ -11,6 +11,15 @@
 #include <vector>
 
 //==============================================================================
+// Touch zoom: while a finger is down on bare wood, any other finger belongs to the
+// pinch gesture, so knobs and plates ignore it.
+struct WoodTouch
+{
+    static inline int fingersOnWood = 0;
+    static bool claims (const juce::MouseEvent& e) { return e.source.isTouch() && fingersOnWood > 0; }
+};
+
+//==============================================================================
 class SlabLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
@@ -169,9 +178,18 @@ public:
                          theme::font (showValue ? theme::FontKind::sansBold : theme::FontKind::sans, 11.0f, 0.1f));
     }
 
-    void mouseDown (const juce::MouseEvent& e) override        { if (! (modDrag && modDrag (e, 0))) juce::Slider::mouseDown (e); else modding = true; }
-    void mouseDrag (const juce::MouseEvent& e) override        { if (modding) modDrag (e, 1); else juce::Slider::mouseDrag (e); }
-    void mouseUp (const juce::MouseEvent& e) override          { if (modding) { modDrag (e, 2); modding = false; } else juce::Slider::mouseUp (e); repaint(); }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (WoodTouch::claims (e)) { blocked = true; return; }
+        if (! (modDrag && modDrag (e, 0))) juce::Slider::mouseDown (e); else modding = true;
+    }
+    void mouseDrag (const juce::MouseEvent& e) override        { if (blocked) return; if (modding) modDrag (e, 1); else juce::Slider::mouseDrag (e); }
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (blocked) { blocked = false; return; }
+        if (modding) { modDrag (e, 2); modding = false; } else juce::Slider::mouseUp (e);
+        repaint();
+    }
     void mouseDoubleClick (const juce::MouseEvent& e) override { if (! (modDrag && modDrag (e, 3))) juce::Slider::mouseDoubleClick (e); }
     void mouseEnter (const juce::MouseEvent& e) override       { juce::Slider::mouseEnter (e); repaint(); }
     void mouseExit (const juce::MouseEvent& e) override        { juce::Slider::mouseExit (e); repaint(); }
@@ -186,7 +204,7 @@ public:
 private:
     std::vector<ModArc> arcs;
     float live = -1.0f;
-    bool modding = false;
+    bool modding = false, blocked = false;
 };
 
 //==============================================================================
@@ -364,6 +382,7 @@ public:
     void mouseDown (const juce::MouseEvent& e) override
     {
         if (e.mods.isPopupMenu()) { if (onRightClick) onRightClick(); return; }
+        if (WoodTouch::claims (e)) return;   // part of a pinch on the wood
         if (onRightClick && e.source.isTouch()) startTimer (650);   // touch: a long press stands in for right-click
         pressed = true; pressure = 0.7f; startY = e.position.y;
         if (onPress) onPress (pressure);
