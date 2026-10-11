@@ -219,6 +219,64 @@ int main()
         CHECK (ok, "position sweep + table swap stays clean");
     }
 
+    // 10. looper: record a pad, change the sound completely, the loop keeps playing as recorded
+    {
+        Run r; r.s.reverbMix = 0; r.s.aWave = WaveA::sine; r.s.aDetune = 0; r.s.cutoff = 1.0f; r.s.ampA = 0.2f; r.s.ampR = 0.2f;
+        r.eng.looper.requestLoop();                                  // start recording
+        r.render (48000, { on (0, 57), off (40000, 57) });
+        r.eng.looper.requestLoop();                                  // close: 1 s loop, playing
+        r.render (2400);
+        CHECK (r.eng.looper.getState() == Looper::playing, "looper playing after the second press");
+        CHECK (std::abs (r.eng.looper.length() - 48000) < 600, "loop length ~1 s (%d)", r.eng.looper.length());
+        // "switch patch": silence the synth entirely; the loop must still sound
+        r.s.aLevel = 0; r.s.bLevel = 0;
+        r.L.clear(); r.R.clear();
+        r.render (48000);
+        const float loopRms = rms (r.L, 0, 48000);
+        CHECK (loopRms > 0.03f, "loop keeps playing after the sound changes (rms %.3f)", loopRms);
+        float jump = 0; for (size_t i = 1; i < r.L.size(); ++i) jump = std::max (jump, std::abs (r.L[i] - r.L[i - 1]));
+        CHECK (jump < 0.2f, "no click at the loop point (max step %.3f)", jump);
+
+        // overdub a second note, then undo it
+        r.s.aLevel = 0.8f;
+        r.eng.looper.requestLoop();                                  // overdub
+        r.L.clear(); r.render (48000, { on (0, 64), off (30000, 64) });
+        r.eng.looper.requestLoop();                                  // back to play
+        r.s.aLevel = 0;
+        r.L.clear(); r.render (48000);
+        const float withOverdub = rms (r.L, 0, 48000);
+        r.eng.looper.requestUndo();
+        r.L.clear(); r.render (48000);
+        const float afterUndo = rms (r.L, 0, 48000);
+        std::printf ("      loop rms: first %.3f, with overdub %.3f, after undo %.3f\n", loopRms, withOverdub, afterUndo);
+        CHECK (withOverdub > loopRms * 1.1f && std::abs (afterUndo - loopRms) < loopRms * 0.15f, "overdub adds, undo takes it back");
+
+        r.eng.looper.requestStop();
+        r.L.clear(); r.render (9600);
+        CHECK (rms (r.L, 4800, 9600) < 1.0e-3f, "stop silences the loop");
+        r.eng.looper.requestClear();
+        r.render (512);
+        CHECK (r.eng.looper.getState() == Looper::empty, "clear empties it");
+    }
+
+    // 11. double-tap a timbre plate (pad 48 = plate A) to lock it, double-tap again to unlock
+    {
+        Run r; r.s.reverbMix = 0;
+        auto A = [&] { return r.eng.display.src[(int) Src::plateA].load(); };
+        const int pad = 48, ch = 10;
+        r.render (4800, { on (0, pad, 100, ch), pat (1000, pad, 110, ch), off (2400, pad, ch) });   // single tap
+        r.render (24000);
+        CHECK (A() < 0.05f, "single tap: plate A drops back (%.2f)", A());
+        r.render (9600, { on (0, pad, 100, ch), off (2400, pad, ch), on (6000, pad, 100, ch), pat (6500, pad, 120, ch),
+                          pat (7400, pad, 20, ch), off (7800, pad, ch) });                      // double tap, lifting off slowly
+        r.render (9600);
+        CHECK (A() > 0.8f, "double tap locks plate A at its peak (%.2f)", A());
+        CHECK (r.eng.display.plateLocked[12].load(), "lock shows on the display");
+        r.render (9600, { on (0, pad, 100, ch), off (2400, pad, ch), on (6000, pad, 100, ch), off (7000, pad, ch) });
+        r.render (9600);
+        CHECK (A() < 0.05f && ! r.eng.display.plateLocked[12].load(), "double tap again unlocks (%.2f)", A());
+    }
+
     std::printf (failures == 0 ? "\nALL PASSED\n" : "\n%d FAILED\n", failures);
     return failures == 0 ? 0 : 1;
 }

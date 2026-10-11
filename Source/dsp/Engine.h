@@ -5,6 +5,7 @@
 
 #include "Common.h"
 #include "Fx.h"
+#include "Looper.h"
 #include "Maps.h"
 #include "Settings.h"
 #include "Voice.h"
@@ -31,6 +32,7 @@ namespace zen
         std::array<std::atomic<float>, maxVoices> voiceLevel {}, voicePitch {}, voicePress {};
         std::array<std::atomic<int>, maxVoices> voicePlate {};
         std::array<std::atomic<float>, numPlates> plateLevel {};   // note plates: glow; timbre plates: value
+        std::array<std::atomic<bool>, numPlates> plateLocked {};
         std::array<std::atomic<float>, numSrc> src {};
         std::array<std::atomic<float>, numDst> dstNorm {};
         std::atomic<int> noteOnCount { 0 }, lastPlate { -1 };
@@ -56,6 +58,7 @@ namespace zen
         {
             fs = (float) sampleRate;
             chorus.prepare (fs); delay.prepare (fs); reverb.prepare (fs);
+            looper.prepare (fs);
             for (auto& v : voices) { v.active = false; v.amp.reset(); v.noiseHP.setCutoff (300.0f, fs); v.noiseLP.setCutoff (7000.0f, fs); }
             bufL.assign (4096, 0.0f); bufR.assign (4096, 0.0f);
             drift1.prepare (fs / (float) chunk, 1.0f, 11u);
@@ -115,24 +118,44 @@ namespace zen
                 {
                     L[i] = softClip (L[i] * vol);
                     R[i] = softClip (R[i] * vol);
+                }
+                // the looper records what you hear and plays it back on top, untouched by preset changes
+                looper.process (L, R, len, s.loopLevel);
+                for (int i = 0; i < len; ++i)
+                {
+                    L[i] = softClip (L[i]);
+                    R[i] = softClip (R[i]);
                     const int w = scopeW;
                     display.scope[(size_t) w].store (0.5f * (L[i] + R[i]), std::memory_order_relaxed);
                     scopeW = (w + 1) & (Display::scopeSize - 1);
                 }
             }
             display.scopeWrite.store (scopeW, std::memory_order_relaxed);
+            sampleClock += (uint64_t) n;
             publishDisplay();
         }
 
         Display display;
+        Looper looper;
 
     private:
         //======================================================================
         struct PlateState
         {
             bool down = false, fromUi = false;
-            float press = 0.0f, target = 0.0f;
+            bool locked = false;              // timbre plates: double-tap holds the value
+            float press = 0.0f, target = 0.0f, peak = 0.0f;
+            uint64_t lastDown = 0, lastUp = 0;
         };
+        uint64_t sampleClock = 0;
+
+        void setPlatePressure (int p, float v)
+        {
+            auto& ps = plates[(size_t) p];
+            if (p >= numNotePlates && ps.locked && ! ps.down) return;   // locked and let go: keep it
+            ps.target = v;
+            if (ps.down) ps.peak = std::max (ps.peak, v);
+        }
 
         struct Held { int id; float pitch; float vel; };
 
@@ -202,7 +225,7 @@ namespace zen
             {
                 const float v = m.d2 / 127.0f;
                 const int p = plateForNote (m.d1, ch);
-                if (p >= 0) plates[(size_t) p].target = v;
+                if (p >= 0) setPlatePressure (p, v);
                 else setPressure (keyId (ch, m.d1), v);
             }
             else if (type == 0xD0) chanAT = m.d1 / 127.0f;
@@ -237,8 +260,21 @@ namespace zen
             }
             else
             {
-                // timbre plate: the strike itself sets a starting value, pressure takes over
-                ps.target = std::max (ps.target * (set->latchTimbre ? 1.0f : 0.0f), vel * 0.6f);
+                // double-tap (two quick taps) locks or unlocks a timbre plate
+                const uint64_t now = sampleClock;
+                const auto q = (uint64_t) (0.4f * fs);
+                const bool quickFirstTap = ps.lastUp > ps.lastDown && ps.lastUp - ps.lastDown < q;
+                if (ps.lastDown != 0 && now - ps.lastDown < q && quickFirstTap)
+                {
+                    ps.locked = ! ps.locked;
+                    ps.lastDown = 0;                 // a third tap starts a new pair
+                }
+                else ps.lastDown = now == 0 ? 1 : now;
+
+                // the strike itself sets a starting value, pressure takes over
+                const bool keep = set->latchTimbre || ps.locked;
+                ps.target = std::max (ps.target * (keep ? 1.0f : 0.0f), vel * 0.6f);
+                ps.peak = fromUi ? vel : vel * 0.6f;
             }
         }
 
@@ -247,7 +283,12 @@ namespace zen
             auto& ps = plates[(size_t) p];
             ps.down = false;
             if (p < numNotePlates) { ps.target = 0.0f; noteOff (plateId (p)); }
-            else if (! set->latchTimbre) ps.target = 0.0f;
+            else
+            {
+                ps.lastUp = sampleClock == 0 ? 1 : sampleClock;
+                if (ps.locked) ps.target = ps.peak;          // hold the hardest point of that press
+                else if (! set->latchTimbre) ps.target = 0.0f;
+            }
         }
 
         void pollUiPlates()
@@ -258,7 +299,7 @@ namespace zen
                 const float last = uiLast[(size_t) p];
                 if (u >= 0.0f && last < 0.0f) plateDown (p, std::max (0.05f, u), true);
                 else if (u < 0.0f && last >= 0.0f) plateUp (p);
-                else if (u >= 0.0f) plates[(size_t) p].target = u;
+                else if (u >= 0.0f) setPlatePressure (p, u);
                 uiLast[(size_t) p] = u;
             }
         }
@@ -688,6 +729,7 @@ namespace zen
                 }
                 else lv = plates[(size_t) p].press;
                 display.plateLevel[(size_t) p].store (lv, std::memory_order_relaxed);
+                display.plateLocked[(size_t) p].store (plates[(size_t) p].locked, std::memory_order_relaxed);
             }
 
             const Voice* nv = newestVoice();

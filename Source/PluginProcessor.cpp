@@ -446,6 +446,7 @@ zen::Settings ZenProcessor::readSettings() const
     for (int p = 0; p < zen::numPlates; ++p) s.padNotes[(size_t) p] = padNotes[(size_t) p].load();
     s.arpOn = bv (ids::arpOn); s.arpMode = (zen::ArpMode) juce::jlimit (0, 4, iv (ids::arpMode));
     s.arpRate = iv (ids::arpRate); s.arpOctaves = iv (ids::arpOctaves) + 1; s.arpGate = v (ids::arpGate); s.arpHold = bv (ids::arpHold);
+    s.loopLevel = loopLevel.load();
     s.bpm = hostBpm.load();
     return s;
 }
@@ -592,6 +593,7 @@ void ZenProcessor::getStateInformation (juce::MemoryBlock& destData)
     for (int p = 0; p < zen::numPlates; ++p) pads << padNotes[(size_t) p].load() << (p < zen::numPlates - 1 ? "," : "");
     state.setProperty ("padNotes", pads, nullptr);
     state.setProperty ("userPreset", userPresetName, nullptr);
+    state.setProperty ("loopLevel", loopLevel.load(), nullptr);
 
     const auto k = getKeyframes();
     juce::MemoryBlock mb;
@@ -615,6 +617,7 @@ void ZenProcessor::setStateInformation (const void* data, int sizeInBytes)
             if (pads.size() == zen::numPlates)
                 for (int p = 0; p < zen::numPlates; ++p) padNotes[(size_t) p].store (pads[p].getIntValue());
             userPresetName = tree.getProperty ("userPreset", "").toString();
+            loopLevel.store ((float) (double) tree.getProperty ("loopLevel", 0.8));
             applyState (tree, true);
         }
 }

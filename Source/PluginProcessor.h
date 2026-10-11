@@ -110,6 +110,10 @@ public:
     void setPadNote (int plate, int note);
     void resetPadNotes();
 
+    // The looper (after the whole synth, so preset changes don't touch it)
+    zen::Looper& looper()                       { return engine.looper; }
+    std::atomic<float> loopLevel { 0.8f };
+
     // Visuals: 0 = off, 1 = low, 2 = full (saved with the session, not automatable)
     std::atomic<int> visualsMode { 2 };
 

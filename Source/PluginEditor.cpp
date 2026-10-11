@@ -276,6 +276,39 @@ Content::Content (ZenProcessor& p)
     place (nextBtn, pol (382.0f, 156.0f), 48.0f, 40.0f, -24.0f, 8.0f);
     prevBtn.onClick = [this] { stepPreset (-1); };
     nextBtn.onClick = [this] { stepPreset (1); };
+    // ---- the looper, along the bottom right of the slab (always there, on every page)
+    {
+        const float angles[3] = { 121.0f, 133.0f, 145.0f };
+        SteelButton* btns[3] = { &loopBtn, &loopStopBtn, &loopUndoBtn };
+        for (int i = 0; i < 3; ++i)
+        {
+            addAndMakeVisible (btns[i]);
+            place (*btns[i], pol (388.0f, angles[i]), 54.0f, 56.0f, 0.0f, 23.0f);
+        }
+        loopBtn.setTriggeredOnMouseDown (true);       // timing matters: act on the touch, not the release
+        loopStopBtn.setTriggeredOnMouseDown (true);
+        loopStopBtn.showLed = false;
+        loopBtn.onClick = [this] { proc.looper().requestLoop(); };
+        loopStopBtn.onClick = [this] { proc.looper().requestStop(); };
+        loopUndoBtn.onHold = [this] { proc.looper().requestClear(); showHint ("loop cleared"); };
+        loopUndoBtn.onClick = [this]
+        {
+            if (loopUndoBtn.consumeHold()) return;
+            if (proc.looper().displayCanUndo.load()) { proc.looper().requestUndo(); showHint ("last overdub undone"); }
+            else showHint ("nothing to undo  -  hold UNDO to clear the loop");
+        };
+        loopBtn.setTooltip ("LOOP: record, then play, then overdub. Records what you hear, so you can change presets and play over it.");
+        loopUndoBtn.setTooltip ("Tap: undo the last overdub. Hold: clear the loop.");
+
+        addAndMakeVisible (loopLevelKnob);
+        place (loopLevelKnob, pol (386.0f, 237.0f), 70.0f, 66.0f, 0.0f, 23.0f);
+        loopLevelKnob.setRange (0.0, 1.0);
+        loopLevelKnob.setValue (proc.loopLevel.load(), juce::dontSendNotification);
+        loopLevelKnob.setDoubleClickReturnValue (true, 0.8);
+        loopLevelKnob.textFromValueFunction = [] (double v) { return juce::String (juce::roundToInt (v * 100.0)) + "%"; };
+        loopLevelKnob.onValueChange = [this] { proc.loopLevel.store ((float) loopLevelKnob.getValue()); };
+    }
+
     addAndMakeVisible (presetHit);
     presetHit.setBounds (390, 838, 200, 40);
     presetHit.addMouseListener (this, false);
@@ -300,7 +333,7 @@ Content::Content (ZenProcessor& p)
         };
         pl->onRelease = [this, i] { if (! learning) proc.setUiPlate (i, -1.0f); };
         if (timbre) pl->onRightClick = [this, i] { arm ((int) zen::Src::plateA + (i - 12)); };
-        pl->setTooltip (timbre ? "Timbre plate: hold to play its modulation. Right-click to assign it to knobs."
+        pl->setTooltip (timbre ? "Timbre plate: hold to play its modulation. Double-tap to lock it on (double-tap again to unlock). Right-click to assign it."
                                : "Note plate: click and hold to play, drag up for more pressure.");
     }
 
@@ -644,7 +677,7 @@ namespace
     juce::File slabFile (int pixels)
     {
         // bump the version when the wood or the lettering changes
-        return ZenProcessor::dataFolder().getChildFile ("slab-v3-" + juce::String (pixels) + ".png");
+        return ZenProcessor::dataFolder().getChildFile ("slab-v4-" + juce::String (pixels) + ".png");
     }
 }
 
@@ -925,10 +958,31 @@ void Content::timerCallback()
     }
 
     const auto& d = proc.display();
+
+    // looper lights: red recording, amber overdubbing, green playing; the ring is the loop's position
+    {
+        auto& lp = proc.looper();
+        const int st = lp.displayState.load();
+        const float pos = lp.displayPos.load();
+        const juce::Colour col = st == zen::Looper::recording ? theme::red
+                               : st == zen::Looper::overdubbing ? theme::amber
+                               : st == zen::Looper::playing ? theme::green : theme::ledOff;
+        const bool blink = st == zen::Looper::recording && std::fmod (now * 0.001, 0.5) < 0.25;
+        loopBtn.ledColour = col;
+        loopBtn.setLedLevel (st == zen::Looper::empty || st == zen::Looper::stopped ? 0.0f : (blink ? 0.5f : 1.0f));
+        loopBtn.setRing (st == zen::Looper::empty ? -1.0f : (st == zen::Looper::stopped ? 0.0f : pos),
+                         st == zen::Looper::stopped ? theme::ledOff : col);
+        loopUndoBtn.ledColour = theme::amber;
+        loopUndoBtn.setLedLevel (lp.displayCanUndo.load() ? 0.6f : 0.0f);
+        if (std::abs (loopLevelKnob.getValue() - proc.loopLevel.load()) > 1.0e-4 && ! loopLevelKnob.isMouseButtonDown())
+            loopLevelKnob.setValue (proc.loopLevel.load(), juce::dontSendNotification);
+    }
+
     for (int i = 0; i < zen::numPlates; ++i)
     {
         auto& pl = *plates[(size_t) i];
         pl.setLevel (d.plateLevel[(size_t) i].load());
+        if (const bool lk = d.plateLocked[(size_t) i].load(); lk != pl.locked) { pl.locked = lk; pl.repaint(); }
         if (vis > 0 && lowFrame) pl.tick (dt * (vis == 2 ? 1.0f : 2.0f));
         const bool wantArmed = (learning && learnPlate == i) || (armedSrc == (int) zen::Src::plateA + (i - 12) && i >= 12);
         if (pl.armed != wantArmed) { pl.armed = wantArmed; pl.armedColour = learning ? theme::red : theme::srcColour (armedSrc); pl.repaint(); }
@@ -992,8 +1046,11 @@ ZenEditor::ZenEditor (ZenProcessor& p) : AudioProcessorEditor (p), content (p)
         if (auto* holder = juce::StandalonePluginHolder::getInstance())
             holder->showAudioSettingsDialog();
     };
+    fitBtn.showLed = false;
+    addChildComponent (fitBtn);
+    fitBtn.onClick = [this] { zoom = 1.0f; applyZoom (true); };
     juce::Desktop::getInstance().addGlobalMouseListener (&gestures);
-    content.showHint ("pinch the wood to zoom  -  double-tap the wood to jump in or out");
+    content.showHint ("two fingers on the wood to zoom  -  double-tap the wood to zoom in  -  FIT zooms out");
    #else
     constrainer.setFixedAspectRatio (1.0);
     constrainer.setSizeLimits (560, 560, 1400, 1400);
@@ -1027,6 +1084,8 @@ void ZenEditor::resized()
     midiBtn.dome = audioBtn.dome = 26.0f * bs;
     midiBtn.setBounds (6, 6, bw, bh);
     audioBtn.setBounds (getWidth() - 6 - bw, 6, bw, bh);
+    fitBtn.dome = 26.0f * bs;
+    fitBtn.setBounds (6, getHeight() - 6 - bh, bw, bh);
    #endif
     applyZoom (true);
 }
@@ -1050,6 +1109,8 @@ void ZenEditor::applyZoom (bool sharpen)
    #if JUCE_ANDROID || JUCE_IOS
     midiBtn.toFront (false);
     audioBtn.toFront (false);
+    fitBtn.setVisible (zoom > 1.01f);
+    fitBtn.toFront (false);
    #endif
     if (sharpen)
     {
@@ -1067,6 +1128,9 @@ void ZenEditor::zoomAround (juce::Point<float> editorPos, float newZoom, juce::P
 }
 
 #if JUCE_ANDROID || JUCE_IOS
+// Zoom only ever comes from bare wood: two fingers on the wood pinch, one finger on the wood
+// drags (when zoomed), two quick taps on the wood zoom in. Touches on plates, knobs and buttons
+// never zoom, and FIT (bottom left) zooms back out.
 void ZenEditor::Gestures::beginPan (int index)
 {
     if (auto it = touches.find (index); it != touches.end())
@@ -1082,59 +1146,60 @@ void ZenEditor::Gestures::mouseDown (const juce::MouseEvent& e)
     const int idx = e.source.getIndex();
     const auto pos = ed.getLocalPoint (nullptr, e.getScreenPosition()).toFloat();
     touches[idx] = pos;
-    if (e.eventComponent == &ed.content) wood.insert (idx);
-    WoodTouch::fingersOnWood = (int) wood.size();
 
-    if (! wood.empty() && touches.size() >= 2 && ! pinching)
+    if (e.eventComponent != &ed.content)
     {
-        // a pinch: the wood finger and the newest finger
-        pinchA = *wood.begin();
-        pinchB = idx != pinchA ? idx : touches.rbegin()->first;
-        const auto a = touches[pinchA], b = touches[pinchB];
-        startDist = std::max (20.0f, a.getDistanceFrom (b));
-        startZoom = ed.zoom;
-        anchor = ((a + b) * 0.5f - ed.origin) / (ed.baseScale * ed.zoom);
-        pinching = true;
+        lastTap = 0;              // playing something in between cancels a double-tap
         return;
     }
 
-    if (wood.count (idx) != 0 && touches.size() == 1)
+    wood.insert (idx);
+    downTime[idx] = juce::Time::getMillisecondCounter();
+    downPos[idx] = pos;
+    moved = false;
+
+    if (wood.size() >= 2 && ! pinching && ! pinchPending)
     {
-        const auto now = juce::Time::getMillisecondCounter();
-        if (now - lastTap < 320 && pos.getDistanceFrom (lastTapPos) < 50.0f)
-        {
-            // double-tap: jump in around the tap, or back out
-            const auto at = (pos - ed.origin) / (ed.baseScale * ed.zoom);
-            if (ed.zoom < 1.5f) ed.zoomAround (pos, 2.5f, at);
-            else { ed.zoom = 1.0f; }
-            ed.applyZoom (true);
-            lastTap = 0;
-        }
-        else
-        {
-            lastTap = now;
-            lastTapPos = pos;
-        }
-        beginPan (idx);
+        // two fingers on the wood: a pinch, once they actually spread or close a little
+        pinchA = *wood.begin();
+        pinchB = *std::next (wood.begin());
+        startDist = std::max (20.0f, touches[pinchA].getDistanceFrom (touches[pinchB]));
+        pinchPending = true;
+        lastTap = 0;
+        return;
     }
+    if (wood.size() == 1) beginPan (idx);
 }
 
 void ZenEditor::Gestures::mouseDrag (const juce::MouseEvent& e)
 {
     if (! e.source.isTouch()) return;
     const int idx = e.source.getIndex();
-    if (touches.count (idx) == 0) return;
-    touches[idx] = ed.getLocalPoint (nullptr, e.getScreenPosition()).toFloat();
+    if (wood.count (idx) == 0) return;
+    const auto pos = ed.getLocalPoint (nullptr, e.getScreenPosition()).toFloat();
+    touches[idx] = pos;
+    if (pos.getDistanceFrom (downPos[idx]) > 12.0f) moved = true;
 
-    if (pinching && touches.count (pinchA) != 0 && touches.count (pinchB) != 0)
+    if ((pinchPending || pinching) && touches.count (pinchA) != 0 && touches.count (pinchB) != 0)
     {
         const auto a = touches[pinchA], b = touches[pinchB];
-        ed.zoomAround ((a + b) * 0.5f, startZoom * a.getDistanceFrom (b) / startDist, anchor);
+        const float d = std::max (20.0f, a.getDistanceFrom (b));
+        if (pinchPending)
+        {
+            if (std::abs (d / startDist - 1.0f) < 0.08f) return;   // not a pinch yet
+            pinchPending = false;
+            pinching = true;
+            WoodTouch::fingersOnWood = 2;
+            startDist = d;
+            startZoom = ed.zoom;
+            anchor = ((a + b) * 0.5f - ed.origin) / (ed.baseScale * ed.zoom);
+        }
+        ed.zoomAround ((a + b) * 0.5f, startZoom * d / startDist, anchor);
         ed.applyZoom (false);
     }
-    else if (! pinching && wood.count (idx) != 0 && touches.size() == 1 && ed.zoom > 1.01f)
+    else if (! pinching && ! pinchPending && wood.size() == 1 && ed.zoom > 1.01f)
     {
-        ed.origin = panStartOrigin + (touches[idx] - panStartPos);
+        ed.origin = panStartOrigin + (pos - panStartPos);
         ed.applyZoom (false);
     }
 }
@@ -1143,20 +1208,43 @@ void ZenEditor::Gestures::mouseUp (const juce::MouseEvent& e)
 {
     if (! e.source.isTouch()) return;
     const int idx = e.source.getIndex();
+    const bool wasWood = wood.count (idx) != 0;
+    const auto pos = touches.count (idx) != 0 ? touches[idx] : juce::Point<float>();
     touches.erase (idx);
     wood.erase (idx);
 
-    if (pinching && (idx == pinchA || idx == pinchB))
+    if ((pinching || pinchPending) && (idx == pinchA || idx == pinchB))
     {
-        pinching = false;
-        if (! wood.empty()) beginPan (*wood.begin());   // keep panning with the finger that's left
+        const bool didZoom = pinching;
+        pinching = pinchPending = false;
+        WoodTouch::fingersOnWood = 0;
+        if (! wood.empty()) beginPan (*wood.begin());   // keep dragging with the finger that's left
+        if (didZoom) ed.applyZoom (true);               // re-render the wood sharp for this zoom
+        return;
     }
-    if (juce::Desktop::getInstance().getNumDraggingMouseSources() <= 1 && touches.empty())
+
+    // a quick, still tap on the wood; two of them in a row zoom in (never out: that's FIT)
+    if (wasWood && wood.empty() && ! moved)
     {
-        wood.clear();
-        pinching = false;
-        ed.applyZoom (true);   // re-render the wood sharp for this zoom
+        const auto now = juce::Time::getMillisecondCounter();
+        if (now - downTime[idx] < 250)
+        {
+            if (lastTap != 0 && now - lastTap < 350 && pos.getDistanceFrom (lastTapPos) < 60.0f)
+            {
+                if (ed.zoom < 1.5f)
+                {
+                    ed.zoomAround (pos, 2.5f, (pos - ed.origin) / (ed.baseScale * ed.zoom));
+                    ed.applyZoom (true);
+                }
+                lastTap = 0;
+            }
+            else
+            {
+                lastTap = now;
+                lastTapPos = pos;
+            }
+        }
     }
-    WoodTouch::fingersOnWood = (int) wood.size();
+    if (wasWood && moved && wood.empty() && ed.zoom > 1.01f) ed.applyZoom (true);
 }
 #endif

@@ -41,6 +41,23 @@ Knobs that can be modulated get a coloured halo. Drag one to set how much the so
 Double-click removes it. Click the source again (or bare wood) when done.
 The full list of 12 slots is on the MOD page.
 
+## Looper
+
+Bottom right of the slab, on every page. It records what you hear (after the effects),
+so you can loop a pad, switch presets and play a lead over it.
+
+- **LOOP:** first tap records, next tap closes the loop and plays, then taps toggle overdub / play.
+  Light: red recording, amber overdubbing, green playing; the ring shows where the loop is.
+- **STOP:** stops (LOOP plays it again from the start). Pressed while recording, it closes the loop stopped.
+- **UNDO:** tap to take back the last overdub, hold to clear the loop.
+- **LOOP LVL** (bottom left): playback level. Loops last up to 45 s and aren't saved with the set.
+
+## Locking a timbre plate
+
+Double-tap a timbre plate (A-D), on screen or on its Launchkey pad, to lock it on at the
+hardest point of that press. A twin ring shows it's locked. Press it again to change the
+held value; double-tap again to unlock.
+
 ## The wavetable sandbox (WAVES)
 
 - **DRAW:** draw one cycle with the mouse or a finger. **HARMONICS:** drag 32 bars that set each overtone.
@@ -59,7 +76,8 @@ The same synth, as a tablet app (`Zenthesizer.jucer`, built by `.github/workflow
 Plays through the tablet's audio, takes MIDI from USB (Launchkey over USB-C) or Bluetooth (the
 BLUETOOTH button, top left). AUDIO (top right) picks the output and buffer size.
 Long-press a timbre plate to assign it (instead of right-click).
-Pinch the bare wood to zoom (up to 4x), drag the wood to move around, double-tap the wood to jump in or out.
+Zoom: two fingers on bare wood pinch (up to 4x), one finger on the wood drags, a double-tap on the wood
+zooms in, FIT (bottom left) zooms back out. Touches on plates and knobs never zoom.
 
 The APK is signed with `android/zen.keystore` (password `zenthesizer`), kept in the repo so every
 build can install over the last one.

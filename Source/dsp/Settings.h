@@ -95,6 +95,8 @@ namespace zen
         float arpGate = 0.6f;
         bool arpHold = false;
 
+        float loopLevel = 0.8f;   // the looper's playback level
+
         float bpm = 0.0f;   // host tempo, 0 if unknown
     };
 

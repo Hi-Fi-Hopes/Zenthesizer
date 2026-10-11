@@ -99,6 +99,8 @@ private:
     std::array<std::unique_ptr<SteelButton>, 3> visButtons;
     std::array<std::unique_ptr<BrassPlate>, zen::numPlates> plates;
     SteelButton prevBtn { "PREV", 16.0f }, nextBtn { "NEXT", 16.0f };
+    SteelButton loopBtn { "LOOP", 22.0f }, loopStopBtn { "STOP", 22.0f }, loopUndoBtn { "UNDO", 22.0f };
+    WoodKnob loopLevelKnob { "LOOP LVL", 32.0f };
     juce::Component presetHit;
 
     // SYNTH page
@@ -164,7 +166,7 @@ private:
     void zoomAround (juce::Point<float> editorPos, float newZoom, juce::Point<float> anchorContent);
 
    #if JUCE_ANDROID || JUCE_IOS
-    SteelButton midiBtn { "BLUETOOTH", 26.0f }, audioBtn { "AUDIO", 26.0f };
+    SteelButton midiBtn { "BLUETOOTH", 26.0f }, audioBtn { "AUDIO", 26.0f }, fitBtn { "FIT", 26.0f };
 
     // Pinch, drag and double-tap on bare wood (listens to every touch on screen).
     struct Gestures : public juce::MouseListener
@@ -177,7 +179,9 @@ private:
         ZenEditor& ed;
         std::map<int, juce::Point<float>> touches;
         std::set<int> wood;
-        bool pinching = false;
+        bool pinching = false, pinchPending = false, moved = false;
+        std::map<int, juce::uint32> downTime;
+        std::map<int, juce::Point<float>> downPos;
         int pinchA = -1, pinchB = -1;
         float startDist = 1.0f, startZoom = 1.0f;
         juce::Point<float> anchor, panStartPos, panStartOrigin;

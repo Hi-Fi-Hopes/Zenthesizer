@@ -11,11 +11,11 @@
 #include <vector>
 
 //==============================================================================
-// Touch zoom: while a finger is down on bare wood, any other finger belongs to the
-// pinch gesture, so knobs and plates ignore it.
+// Touch zoom: while two fingers are pinching the bare wood, any other finger is ignored
+// by knobs and plates.
 struct WoodTouch
 {
-    static inline int fingersOnWood = 0;
+    static inline int fingersOnWood = 0;   // > 0 only while a pinch is active
     static bool claims (const juce::MouseEvent& e) { return e.source.isTouch() && fingersOnWood > 0; }
 };
 
@@ -209,13 +209,28 @@ private:
 
 //==============================================================================
 // Steel push button set into the wood, with an indicator light above and a burned label below.
-class SteelButton : public juce::Button
+class SteelButton : public juce::Button, private juce::Timer
 {
 public:
     explicit SteelButton (const juce::String& labelText, float domeSize = 22.0f) : juce::Button (labelText), dome (domeSize)
     {
         setPaintingIsUnclipped (true);
     }
+
+    // optional: press and hold
+    std::function<void()> onHold;
+    bool consumeHold() { const bool h = held; held = false; return h; }
+
+    // optional: a progress ring around the dome (0..1, < 0 = none)
+    float ring = -1.0f;
+    juce::Colour ringColour = theme::amber;
+    void setRing (float r, juce::Colour c)
+    {
+        if (std::abs (r - ring) > 0.003f || c != ringColour) { ring = r; ringColour = c; repaint(); }
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override { held = false; if (onHold) startTimer (700); juce::Button::mouseDown (e); }
+    void mouseUp (const juce::MouseEvent& e) override   { stopTimer(); juce::Button::mouseUp (e); }
 
     float dome;
     juce::Colour ledColour = theme::amber;
@@ -246,6 +261,17 @@ public:
             g.fillEllipse (c.x - 3.0f, ledY, 6.0f, 6.0f);
         }
 
+        if (ring >= 0.0f)
+        {
+            juce::Path track, prog;
+            track.addCentredArc (c.x, c.y, r + 7.0f, r + 7.0f, 0.0f, 0.0f, juce::MathConstants<float>::twoPi, true);
+            g.setColour (theme::burn.withAlpha (0.25f));
+            g.strokePath (track, juce::PathStrokeType (2.0f));
+            prog.addCentredArc (c.x, c.y, r + 7.0f, r + 7.0f, 0.0f, 0.0f, juce::MathConstants<float>::twoPi * juce::jlimit (0.0f, 1.0f, ring), true);
+            g.setColour (ringColour);
+            g.strokePath (prog, juce::PathStrokeType (2.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+
         // recess, dome
         g.setColour (juce::Colour (0x8c281608));
         g.fillEllipse (c.x - r - 3.0f, c.y - r - 3.0f, (r + 3.0f) * 2.0f, (r + 3.0f) * 2.0f);
@@ -264,6 +290,10 @@ public:
             theme::burnText (g, getButtonText(), tr, juce::Justification::centredTop, theme::font (theme::FontKind::sans, 10.0f, 0.12f));
         }
     }
+
+private:
+    bool held = false;
+    void timerCallback() override { stopTimer(); held = true; if (onHold) onHold(); }
 };
 
 //==============================================================================
@@ -301,7 +331,7 @@ public:
 
     juce::String label, subLabel;
     float dia;
-    bool armed = false;
+    bool armed = false, locked = false;
     juce::Colour armedColour = theme::amber;
     std::function<void (float)> onPress;
     std::function<void()> onRelease, onRightClick;
@@ -341,6 +371,13 @@ public:
             g.setColour (juce::Colour (0xffffd68c).withAlpha (0.85f * (1.0f - age)));
             g.drawEllipse (c.x - rr, c.y - rr, rr * 2.0f, rr * 2.0f, 2.0f * (1.0f - age) + 0.5f);
         }
+        if (locked)
+        {
+            // locked by a double-tap: a twin brass ring
+            g.setColour (theme::amber.withAlpha (0.9f));
+            g.drawEllipse (c.x - r - 9.0f, c.y - r - 9.0f, (r + 9.0f) * 2.0f, (r + 9.0f) * 2.0f, 2.0f);
+            g.drawEllipse (c.x - r - 13.0f, c.y - r - 13.0f, (r + 13.0f) * 2.0f, (r + 13.0f) * 2.0f, 1.0f);
+        }
         if (armed)
         {
             g.setColour (armedColour.withAlpha (0.8f));
@@ -376,7 +413,8 @@ public:
 
     bool hitTest (int x, int y) override
     {
-        return juce::Point<float> ((float) getWidth() * 0.5f, (float) getHeight() * 0.5f).getDistanceFrom ({ (float) x, (float) y }) < dia * 0.5f + 2.0f;
+        // a little wider than the brass, so a near miss still plays rather than touching the wood
+        return juce::Point<float> ((float) getWidth() * 0.5f, (float) getHeight() * 0.5f).getDistanceFrom ({ (float) x, (float) y }) < dia * 0.5f + 8.0f;
     }
 
     void mouseDown (const juce::MouseEvent& e) override

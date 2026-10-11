@@ -135,8 +135,8 @@ namespace wood
             p.closeSubPath();
         };
         crack (24.0f, 364.0f, 446.0f, 7.0f);   // stops short of the tabs
-        crack (133.0f, 348.0f, 446.0f, 6.0f);
-        crack (-122.0f, 296.0f, 446.0f, 9.0f);
+        crack (108.0f, 404.0f, 446.0f, 6.0f);   // short checks near the bark, clear of the controls
+        crack (-108.0f, 400.0f, 446.0f, 8.0f);
         return p;
     }
 
