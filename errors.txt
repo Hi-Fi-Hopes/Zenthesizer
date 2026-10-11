@@ -1,0 +1,221 @@
+46:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:54:43: error: expected class name
+47-C/C++:    54 | class StandalonePluginHolder    : private AudioIODeviceCallback,
+48-C/C++:       |                                           ^
+49:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:81:35: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+50-C/C++:    81 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions = nullptr,
+51-C/C++:       |                                   ^~~~~~~~~~~~~~~~~~
+52-C/C++:       |                                   AudioFormatManager
+53-C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+54-C/C++:    50 | class JUCE_API  AudioFormatManager
+55-C/C++:       |                 ^
+--
+57:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:81:55: error: no type named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+58-C/C++:    81 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions = nullptr,
+59-C/C++:       |                                   ~~~~~~~~~~~~~~~~~~~~^
+60:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:335:40: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+61-C/C++:   335 |                                  const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+62-C/C++:       |                                        ^~~~~~~~~~~~~~~~~~
+63-C/C++:       |                                        AudioFormatManager
+64-C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+65-C/C++:    50 | class JUCE_API  AudioFormatManager
+66-C/C++:       |                 ^
+--
+68:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:335:60: error: no type named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+69-C/C++:   335 |                                  const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+70-C/C++:       |                                        ~~~~~~~~~~~~~~~~~~~~^
+71:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:426:5: error: unknown type name 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+72-C/C++:   426 |     AudioDeviceManager deviceManager;
+73-C/C++:       |     ^~~~~~~~~~~~~~~~~~
+74-C/C++:       |     AudioFormatManager
+75-C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+76-C/C++:    50 | class JUCE_API  AudioFormatManager
+77-C/C++:       |                 ^
+--
+79:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:427:5: error: unknown type name 'AudioProcessorPlayer'
+80-C/C++:   427 |     AudioProcessorPlayer player;
+81-C/C++:       |     ^
+82:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:437:21: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+83-C/C++:   437 |     std::unique_ptr<AudioDeviceManager::AudioDeviceSetup> options;
+84-C/C++:       |                     ^~~~~~~~~~~~~~~~~~
+85-C/C++:       |                     AudioFormatManager
+86-C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+87-C/C++:    50 | class JUCE_API  AudioFormatManager
+88-C/C++:       |                 ^
+--
+90:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:437:41: error: no member named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+91-C/C++:   437 |     std::unique_ptr<AudioDeviceManager::AudioDeviceSetup> options;
+92-C/C++:       |                     ~~~~~~~~~~~~~~~~~~~~^
+93:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:438:11: error: use of undeclared identifier 'MidiDeviceInfo'
+94-C/C++:   438 |     Array<MidiDeviceInfo> lastMidiDevices;
+95-C/C++:       |           ^
+96:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:467:28: error: unknown type name 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+97-C/C++:   467 |                            AudioDeviceManager& deviceManagerToUse,
+98-C/C++:       |                            ^~~~~~~~~~~~~~~~~~
+99-C/C++:       |                            AudioFormatManager
+100-C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+101-C/C++:    50 | class JUCE_API  AudioFormatManager
+102-C/C++:       |                 ^
+--
+104:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:546:9: error: unknown type name 'AudioDeviceSelectorComponent'
+105-C/C++:   546 |         AudioDeviceSelectorComponent deviceSelector;
+106-C/C++:       |         ^
+107:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:561:50: error: unknown type name 'AudioIODeviceCallbackContext'
+108-C/C++:   561 |                                            const AudioIODeviceCallbackContext& context) override
+109-C/C++:       |                                                  ^
+110:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:577:35: error: unknown type name 'AudioIODevice'
+111-C/C++:   577 |     void audioDeviceAboutToStart (AudioIODevice* device) override
+112-C/C++:       |                                   ^
+113:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:586:31: error: only virtual member functions can be marked 'override'
+114-C/C++:   586 |     void audioDeviceStopped() override
+115-C/C++:       |                               ^~~~~~~~
+116:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:596:35: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+117-C/C++:   596 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+118-C/C++:       |                                   ^~~~~~~~~~~~~~~~~~
+119-C/C++:       |                                   AudioFormatManager
+120-C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+121-C/C++:    50 | class JUCE_API  AudioFormatManager
+122-C/C++:       |                 ^
+--
+124:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:596:55: error: no type named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+125-C/C++:   596 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+126-C/C++:       |                                   ~~~~~~~~~~~~~~~~~~~~^
+127:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:98:38: error: cannot initialize a parameter of type 'Listener *' with an rvalue of type 'juce::StandalonePluginHolder *'
+128-C/C++:    98 |         shouldMuteInput.addListener (this);
+129-C/C++:       |                                      ^~~~
+130-C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_data_structures/values/juce_Value.h:173:33: note: passing argument to parameter 'listener' here
+131-C/C++:   173 |     void addListener (Listener* listener);
+132-C/C++:       |                                 ^
+133-C/C++: In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+134:C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:107:32: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+135-C/C++:   107 |             options.reset (new AudioDeviceManager::AudioDeviceSetup (*preferredSetupOptions));
+136-C/C++:       |                                ^~~~~~~~~~~~~~~~~~
+137-C/C++:       |                                AudioFormatManager
+138-C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+139-C/C++:    50 | class JUCE_API  AudioFormatManager
+140-C/C++:       |                 ^
+141:C/C++: fatal error: too many errors emitted, stopping now [-ferror-limit=]
+142-C/C++: 20 errors generated.
+143-
+144:> Task :app:buildCMakeRelWithDebInfo[arm64-v8a] FAILED
+145-WARNING: The following problems were found when resolving the SDK location:
+146-Where: sdk.dir property in local.properties file. Problem: Directory does not exist
+147-
+148-
+149-FAILURE: Build failed with an exception.
+150-
+151:* What went wrong:
+152-Execution failed for task ':app:buildCMakeRelWithDebInfo[arm64-v8a]'.
+153-> com.android.ide.common.process.ProcessException: ninja: Entering directory `/home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/.cxx/RelWithDebInfo/3t105v66/arm64-v8a'
+154-  [1/93] Building C object CMakeFiles/cpufeatures.dir/usr/local/lib/android/sdk/ndk/28.1.13356709/sources/android/cpufeatures/cpu-features.c.o
+155-  [2/93] Linking C static library libcpufeatures.a
+156-  [3/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/JuceLibraryCode/BinaryData.cpp.o
+157-  [4/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/JuceLibraryCode/include_juce_audio_plugin_client_ARA.cpp.o
+--
+159:  FAILED: CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp.o 
+160-  /usr/local/lib/android/sdk/ndk/28.1.13356709/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=aarch64-none-linux-android26 --sysroot=/usr/local/lib/android/sdk/ndk/28.1.13356709/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DJUCER_ANDROIDSTUDIO_7F0E4A25=1 -DJUCE_ANDROID=1 -DJUCE_ANDROID_API_VERSION=26 -DJUCE_ANDROID_GL_ES_VERSION_3_0=1 -DJUCE_APP_VERSION=1.1.0 -DJUCE_APP_VERSION_HEX=0x10100 -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_MODULE_AVAILABLE_juce_audio_basics=1 -DJUCE_MODULE_AVAILABLE_juce_audio_devices=1 -DJUCE_MODULE_AVAILABLE_juce_audio_formats=1 -DJUCE_MODULE_AVAILABLE_juce_audio_plugin_client=1 -DJUCE_MODULE_AVAILABLE_juce_audio_processors=1 -DJUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1 -DJUCE_MODULE_AVAILABLE_juce_audio_utils=1 -DJUCE_MODULE_AVAILABLE_juce_core=1 -DJUCE_MODULE_AVAILABLE_juce_data_structures=1 -DJUCE_MODULE_AVAILABLE_juce_dsp=1 -DJUCE_MODULE_AVAILABLE_juce_events=1 -DJUCE_MODULE_AVAILABLE_juce_graphics=1 -DJUCE_MODULE_AVAILABLE_juce_gui_basics=1 -DJUCE_MODULE_AVAILABLE_juce_gui_extra=1 -DJUCE_PROJUCER_VERSION=0x8000f -DJUCE_PUSH_NOTIFICATIONS=1 -DJUCE_PUSH_NOTIFICATIONS_ACTIVITY=\"com/rmsl/juce/JuceActivity\" -DJUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone -DJUCE_STRICT_REFCOUNTEDPOINTER=1 -DJUCE_USE_CURL=0 -DJUCE_VST3_CAN_REPLACE_VST2=0 -DJUCE_WEB_BROWSER=0 -DJucePlugin_AAXCategory=2048 -DJucePlugin_AAXDisableBypass=0 -DJucePlugin_AAXDisableMultiMono=0 -DJucePlugin_AAXIdentifier=com.DIYAudio.Zenthesizer -DJucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode -DJucePlugin_AAXProductId=JucePlugin_PluginCode -DJucePlugin_ARACompatibleArchiveIDs=\"\" -DJucePlugin_ARAContentTypes=0 -DJucePlugin_ARADocumentArchiveID=\"com.DIYAudio.Zenthesizer.aradocumentarchive.1.1.0\" -DJucePlugin_ARAFactoryID=\"com.DIYAudio.Zenthesizer.factory\" -DJucePlugin_ARATransformationFlags=0 -DJucePlugin_AUExportPrefix=ZenthesizerAU -DJucePlugin_AUExportPrefixQuoted=\"ZenthesizerAU\" -DJucePlugin_AUMainType="'aumu'" -DJucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode -DJucePlugin_AUSubType=JucePlugin_PluginCode -DJucePlugin_Build_AAX=0 -DJucePlugin_Build_AU=0 -DJucePlugin_Build_AUv3=0 -DJucePlugin_Build_LV2=0 -DJucePlugin_Build_Standalone=1 -DJucePlugin_Build_Unity=0 -DJucePlugin_Build_VST3=0 -DJucePlugin_Build_VST=0 -DJucePlugin_CFBundleIdentifier=com.diyaudio.zenthesizer -DJucePlugin_Desc="\"Organic touch synthesizer\"" -DJucePlugin_EditorRequiresKeyboardFocus=0 -DJucePlugin_Enable_ARA=0 -DJucePlugin_Enable_IAA=0 -DJucePlugin_IAAName="\"DIY Audio: Zenthesizer\"" -DJucePlugin_IAASubType=JucePlugin_PluginCode -DJucePlugin_IAAType=0x61757269 -DJucePlugin_IsMidiEffect=0 -DJucePlugin_IsSynth=1 -DJucePlugin_LV2PluginClass=InstrumentPlugin -DJucePlugin_Manufacturer="\"DIY Audio\"" -DJucePlugin_ManufacturerCode=0x44697961 -DJucePlugin_ManufacturerEmail=\"\" -DJucePlugin_ManufacturerWebsite=\"www.DIYAudio.com\" -DJucePlugin_Name=\"Zenthesizer\" -DJucePlugin_PluginCode=0x5a656e31 -DJucePlugin_ProducesMidiOutput=0 -DJucePlugin_VSTCategory=kPlugCategSynth -DJucePlugin_VSTNumMidiInputs=16 -DJucePlugin_VSTNumMidiOutputs=16 -DJucePlugin_VSTUniqueID=JucePlugin_PluginCode -DJucePlugin_Version=1.1.0 -DJucePlugin_VersionCode=0x10100 -DJucePlugin_VersionString=\"1.1.0\" -DJucePlugin_Vst3Category="\"Instrument|Synth\"" -DJucePlugin_WantsMidiInput=1 -DNDEBUG=1 -Djuce_jni_EXPORTS -I/home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JuceLibraryCode -I/home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules -I/usr/local/lib/android/sdk/ndk/28.1.13356709/sources/android/cpufeatures -I/home/runner/work/Zenthesizer/Zenthesizer/JUCE/modules/juce_audio_devices/native/oboe/include -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D__ANDROID_UNAVAILABLE_SYMBOLS_ARE_WEAK__ -Werror=unguarded-availability -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security -fexceptions -frtti -O3 -O2 -g -DNDEBUG -fPIC -fsigned-char -std=c++17 -MD -MT CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp.o -MF CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp.o.d -o CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp.o -c /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp
+161-  In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+162:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:54:43: error: expected class name
+163-     54 | class StandalonePluginHolder    : private AudioIODeviceCallback,
+164-        |                                           ^
+165:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:81:35: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+166-     81 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions = nullptr,
+167-        |                                   ^~~~~~~~~~~~~~~~~~
+168-        |                                   AudioFormatManager
+169-  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+170-     50 | class JUCE_API  AudioFormatManager
+171-        |                 ^
+--
+173:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:81:55: error: no type named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+174-     81 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions = nullptr,
+175-        |                                   ~~~~~~~~~~~~~~~~~~~~^
+176:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:335:40: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+177-    335 |                                  const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+178-        |                                        ^~~~~~~~~~~~~~~~~~
+179-        |                                        AudioFormatManager
+180-  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+181-     50 | class JUCE_API  AudioFormatManager
+182-        |                 ^
+--
+184:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:335:60: error: no type named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+185-    335 |                                  const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+186-        |                                        ~~~~~~~~~~~~~~~~~~~~^
+187:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:426:5: error: unknown type name 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+188-    426 |     AudioDeviceManager deviceManager;
+189-        |     ^~~~~~~~~~~~~~~~~~
+190-        |     AudioFormatManager
+191-  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+192-     50 | class JUCE_API  AudioFormatManager
+193-        |                 ^
+--
+195:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:427:5: error: unknown type name 'AudioProcessorPlayer'
+196-    427 |     AudioProcessorPlayer player;
+197-        |     ^
+198:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:437:21: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+199-    437 |     std::unique_ptr<AudioDeviceManager::AudioDeviceSetup> options;
+200-        |                     ^~~~~~~~~~~~~~~~~~
+201-        |                     AudioFormatManager
+202-  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+203-     50 | class JUCE_API  AudioFormatManager
+204-        |                 ^
+--
+206:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:437:41: error: no member named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+207-    437 |     std::unique_ptr<AudioDeviceManager::AudioDeviceSetup> options;
+208-        |                     ~~~~~~~~~~~~~~~~~~~~^
+209:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:438:11: error: use of undeclared identifier 'MidiDeviceInfo'
+210-    438 |     Array<MidiDeviceInfo> lastMidiDevices;
+211-        |           ^
+212:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:467:28: error: unknown type name 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+213-    467 |                            AudioDeviceManager& deviceManagerToUse,
+214-        |                            ^~~~~~~~~~~~~~~~~~
+215-        |                            AudioFormatManager
+216-  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+217-     50 | class JUCE_API  AudioFormatManager
+218-        |                 ^
+--
+220:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:546:9: error: unknown type name 'AudioDeviceSelectorComponent'
+221-    546 |         AudioDeviceSelectorComponent deviceSelector;
+222-        |         ^
+223:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:561:50: error: unknown type name 'AudioIODeviceCallbackContext'
+224-    561 |                                            const AudioIODeviceCallbackContext& context) override
+225-        |                                                  ^
+226:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:577:35: error: unknown type name 'AudioIODevice'
+227-    577 |     void audioDeviceAboutToStart (AudioIODevice* device) override
+228-        |                                   ^
+229:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:586:31: error: only virtual member functions can be marked 'override'
+230-    586 |     void audioDeviceStopped() override
+231-        |                               ^~~~~~~~
+232:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:596:35: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+233-    596 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+234-        |                                   ^~~~~~~~~~~~~~~~~~
+235-        |                                   AudioFormatManager
+236-  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+237-     50 | class JUCE_API  AudioFormatManager
+238-        |                 ^
+--
+240:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:596:55: error: no type named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+241-    596 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+242-        |                                   ~~~~~~~~~~~~~~~~~~~~^
+243:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:98:38: error: cannot initialize a parameter of type 'Listener *' with an rvalue of type 'juce::StandalonePluginHolder *'
+244-     98 |         shouldMuteInput.addListener (this);
+245-        |                                      ^~~~
+246-  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_data_structures/values/juce_Value.h:173:33: note: passing argument to parameter 'listener' here
+247-    173 |     void addListener (Listener* listener);
+248-        |                                 ^
+249-  In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+250:  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:107:32: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+251-    107 |             options.reset (new AudioDeviceManager::AudioDeviceSetup (*preferredSetupOptions));
+252-        |                                ^~~~~~~~~~~~~~~~~~
+253-        |                                AudioFormatManager
+254-  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+255-     50 | class JUCE_API  AudioFormatManager
+256-        |                 ^
+257:  fatal error: too many errors emitted, stopping now [-ferror-limit=]
+258-  20 errors generated.
+259-  [6/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/JuceLibraryCode/include_juce_audio_plugin_client_Standalone.cpp.o
+260-  [7/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/Source/PluginProcessor.cpp.o
+261-  [8/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/JuceLibraryCode/include_juce_audio_basics.cpp.o
+262-  [9/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/JuceLibraryCode/include_juce_audio_devices.cpp.o
+263-  [10/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/JuceLibraryCode/include_juce_audio_formats.cpp.o
+--
+279:BUILD FAILED in 1m 14s
+280-2 actionable tasks: 2 executed

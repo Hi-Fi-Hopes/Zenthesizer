@@ -1,0 +1,280 @@
+Downloading https://services.gradle.org/distributions/gradle-8.13-all.zip
+.................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+Unzipping /home/runner/.gradle/wrapper/dists/gradle-8.13-all/54h0s9kvb6g2sinako7ub77ku/gradle-8.13-all.zip to /home/runner/.gradle/wrapper/dists/gradle-8.13-all/54h0s9kvb6g2sinako7ub77ku
+Set executable permissions for: /home/runner/.gradle/wrapper/dists/gradle-8.13-all/54h0s9kvb6g2sinako7ub77ku/gradle-8.13/bin/gradle
+
+Welcome to Gradle 8.13!
+
+Here are the highlights of this release:
+ - Daemon JVM auto-provisioning
+ - Enhancements for Scala plugin and JUnit testing
+ - Improvements for build authors and plugin developers
+
+For more details see https://docs.gradle.org/8.13/release-notes.html
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :app
+WARNING: The following problems were found when resolving the SDK location:
+Where: sdk.dir property in local.properties file. Problem: Directory does not exist
+
+Checking the license for package NDK (Side by side) 28.1.13356709 in /usr/local/lib/android/sdk/licenses
+License for package NDK (Side by side) 28.1.13356709 accepted.
+Preparing "Install NDK (Side by side) 28.1.13356709 v.28.1.13356709".
+"Install NDK (Side by side) 28.1.13356709 v.28.1.13356709" ready.
+Installing NDK (Side by side) 28.1.13356709 in /usr/local/lib/android/sdk/ndk/28.1.13356709
+"Install NDK (Side by side) 28.1.13356709 v.28.1.13356709" complete.
+"Install NDK (Side by side) 28.1.13356709 v.28.1.13356709" finished.
+
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preRelease_ReleaseBuild UP-TO-DATE
+
+> Task :app:configureCMakeRelWithDebInfo[arm64-v8a]
+Checking the license for package CMake 3.22.1 in /usr/local/lib/android/sdk/licenses
+License for package CMake 3.22.1 accepted.
+Preparing "Install CMake 3.22.1 v.3.22.1".
+"Install CMake 3.22.1 v.3.22.1" ready.
+Installing CMake 3.22.1 in /usr/local/lib/android/sdk/cmake/3.22.1
+"Install CMake 3.22.1 v.3.22.1" complete.
+"Install CMake 3.22.1 v.3.22.1" finished.
+
+> Task :app:buildCMakeRelWithDebInfo[arm64-v8a]
+C/C++: ninja: Entering directory `/home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/.cxx/RelWithDebInfo/3t105v66/arm64-v8a'
+C/C++: /usr/local/lib/android/sdk/ndk/28.1.13356709/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=aarch64-none-linux-android26 --sysroot=/usr/local/lib/android/sdk/ndk/28.1.13356709/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DJUCER_ANDROIDSTUDIO_7F0E4A25=1 -DJUCE_ANDROID=1 -DJUCE_ANDROID_API_VERSION=26 -DJUCE_ANDROID_GL_ES_VERSION_3_0=1 -DJUCE_APP_VERSION=1.1.0 -DJUCE_APP_VERSION_HEX=0x10100 -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_MODULE_AVAILABLE_juce_audio_basics=1 -DJUCE_MODULE_AVAILABLE_juce_audio_devices=1 -DJUCE_MODULE_AVAILABLE_juce_audio_formats=1 -DJUCE_MODULE_AVAILABLE_juce_audio_plugin_client=1 -DJUCE_MODULE_AVAILABLE_juce_audio_processors=1 -DJUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1 -DJUCE_MODULE_AVAILABLE_juce_audio_utils=1 -DJUCE_MODULE_AVAILABLE_juce_core=1 -DJUCE_MODULE_AVAILABLE_juce_data_structures=1 -DJUCE_MODULE_AVAILABLE_juce_dsp=1 -DJUCE_MODULE_AVAILABLE_juce_events=1 -DJUCE_MODULE_AVAILABLE_juce_graphics=1 -DJUCE_MODULE_AVAILABLE_juce_gui_basics=1 -DJUCE_MODULE_AVAILABLE_juce_gui_extra=1 -DJUCE_PROJUCER_VERSION=0x8000f -DJUCE_PUSH_NOTIFICATIONS=1 -DJUCE_PUSH_NOTIFICATIONS_ACTIVITY=\"com/rmsl/juce/JuceActivity\" -DJUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone -DJUCE_STRICT_REFCOUNTEDPOINTER=1 -DJUCE_USE_CURL=0 -DJUCE_VST3_CAN_REPLACE_VST2=0 -DJUCE_WEB_BROWSER=0 -DJucePlugin_AAXCategory=2048 -DJucePlugin_AAXDisableBypass=0 -DJucePlugin_AAXDisableMultiMono=0 -DJucePlugin_AAXIdentifier=com.DIYAudio.Zenthesizer -DJucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode -DJucePlugin_AAXProductId=JucePlugin_PluginCode -DJucePlugin_ARACompatibleArchiveIDs=\"\" -DJucePlugin_ARAContentTypes=0 -DJucePlugin_ARADocumentArchiveID=\"com.DIYAudio.Zenthesizer.aradocumentarchive.1.1.0\" -DJucePlugin_ARAFactoryID=\"com.DIYAudio.Zenthesizer.factory\" -DJucePlugin_ARATransformationFlags=0 -DJucePlugin_AUExportPrefix=ZenthesizerAU -DJucePlugin_AUExportPrefixQuoted=\"ZenthesizerAU\" -DJucePlugin_AUMainType="'aumu'" -DJucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode -DJucePlugin_AUSubType=JucePlugin_PluginCode -DJucePlugin_Build_AAX=0 -DJucePlugin_Build_AU=0 -DJucePlugin_Build_AUv3=0 -DJucePlugin_Build_LV2=0 -DJucePlugin_Build_Standalone=1 -DJucePlugin_Build_Unity=0 -DJucePlugin_Build_VST3=0 -DJucePlugin_Build_VST=0 -DJucePlugin_CFBundleIdentifier=com.diyaudio.zenthesizer -DJucePlugin_Desc="\"Organic touch synthesizer\"" -DJucePlugin_EditorRequiresKeyboardFocus=0 -DJucePlugin_Enable_ARA=0 -DJucePlugin_Enable_IAA=0 -DJucePlugin_IAAName="\"DIY Audio: Zenthesizer\"" -DJucePlugin_IAASubType=JucePlugin_PluginCode -DJucePlugin_IAAType=0x61757269 -DJucePlugin_IsMidiEffect=0 -DJucePlugin_IsSynth=1 -DJucePlugin_LV2PluginClass=InstrumentPlugin -DJucePlugin_Manufacturer="\"DIY Audio\"" -DJucePlugin_ManufacturerCode=0x44697961 -DJucePlugin_ManufacturerEmail=\"\" -DJucePlugin_ManufacturerWebsite=\"www.DIYAudio.com\" -DJucePlugin_Name=\"Zenthesizer\" -DJucePlugin_PluginCode=0x5a656e31 -DJucePlugin_ProducesMidiOutput=0 -DJucePlugin_VSTCategory=kPlugCategSynth -DJucePlugin_VSTNumMidiInputs=16 -DJucePlugin_VSTNumMidiOutputs=16 -DJucePlugin_VSTUniqueID=JucePlugin_PluginCode -DJucePlugin_Version=1.1.0 -DJucePlugin_VersionCode=0x10100 -DJucePlugin_VersionString=\"1.1.0\" -DJucePlugin_Vst3Category="\"Instrument|Synth\"" -DJucePlugin_WantsMidiInput=1 -DNDEBUG=1 -Djuce_jni_EXPORTS -I/home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JuceLibraryCode -I/home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules -I/usr/local/lib/android/sdk/ndk/28.1.13356709/sources/android/cpufeatures -I/home/runner/work/Zenthesizer/Zenthesizer/JUCE/modules/juce_audio_devices/native/oboe/include -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D__ANDROID_UNAVAILABLE_SYMBOLS_ARE_WEAK__ -Werror=unguarded-availability -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security -fexceptions -frtti -O3 -O2 -g -DNDEBUG -fPIC -fsigned-char -std=c++17 -MD -MT CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp.o -MF CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp.o.d -o CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp.o -c /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp
+C/C++: In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:54:43: error: expected class name
+C/C++:    54 | class StandalonePluginHolder    : private AudioIODeviceCallback,
+C/C++:       |                                           ^
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:81:35: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+C/C++:    81 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions = nullptr,
+C/C++:       |                                   ^~~~~~~~~~~~~~~~~~
+C/C++:       |                                   AudioFormatManager
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+C/C++:    50 | class JUCE_API  AudioFormatManager
+C/C++:       |                 ^
+C/C++: In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:81:55: error: no type named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+C/C++:    81 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions = nullptr,
+C/C++:       |                                   ~~~~~~~~~~~~~~~~~~~~^
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:335:40: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+C/C++:   335 |                                  const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+C/C++:       |                                        ^~~~~~~~~~~~~~~~~~
+C/C++:       |                                        AudioFormatManager
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+C/C++:    50 | class JUCE_API  AudioFormatManager
+C/C++:       |                 ^
+C/C++: In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:335:60: error: no type named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+C/C++:   335 |                                  const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+C/C++:       |                                        ~~~~~~~~~~~~~~~~~~~~^
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:426:5: error: unknown type name 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+C/C++:   426 |     AudioDeviceManager deviceManager;
+C/C++:       |     ^~~~~~~~~~~~~~~~~~
+C/C++:       |     AudioFormatManager
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+C/C++:    50 | class JUCE_API  AudioFormatManager
+C/C++:       |                 ^
+C/C++: In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:427:5: error: unknown type name 'AudioProcessorPlayer'
+C/C++:   427 |     AudioProcessorPlayer player;
+C/C++:       |     ^
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:437:21: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+C/C++:   437 |     std::unique_ptr<AudioDeviceManager::AudioDeviceSetup> options;
+C/C++:       |                     ^~~~~~~~~~~~~~~~~~
+C/C++:       |                     AudioFormatManager
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+C/C++:    50 | class JUCE_API  AudioFormatManager
+C/C++:       |                 ^
+C/C++: In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:437:41: error: no member named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+C/C++:   437 |     std::unique_ptr<AudioDeviceManager::AudioDeviceSetup> options;
+C/C++:       |                     ~~~~~~~~~~~~~~~~~~~~^
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:438:11: error: use of undeclared identifier 'MidiDeviceInfo'
+C/C++:   438 |     Array<MidiDeviceInfo> lastMidiDevices;
+C/C++:       |           ^
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:467:28: error: unknown type name 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+C/C++:   467 |                            AudioDeviceManager& deviceManagerToUse,
+C/C++:       |                            ^~~~~~~~~~~~~~~~~~
+C/C++:       |                            AudioFormatManager
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+C/C++:    50 | class JUCE_API  AudioFormatManager
+C/C++:       |                 ^
+C/C++: In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:546:9: error: unknown type name 'AudioDeviceSelectorComponent'
+C/C++:   546 |         AudioDeviceSelectorComponent deviceSelector;
+C/C++:       |         ^
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:561:50: error: unknown type name 'AudioIODeviceCallbackContext'
+C/C++:   561 |                                            const AudioIODeviceCallbackContext& context) override
+C/C++:       |                                                  ^
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:577:35: error: unknown type name 'AudioIODevice'
+C/C++:   577 |     void audioDeviceAboutToStart (AudioIODevice* device) override
+C/C++:       |                                   ^
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:586:31: error: only virtual member functions can be marked 'override'
+C/C++:   586 |     void audioDeviceStopped() override
+C/C++:       |                               ^~~~~~~~
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:596:35: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+C/C++:   596 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+C/C++:       |                                   ^~~~~~~~~~~~~~~~~~
+C/C++:       |                                   AudioFormatManager
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+C/C++:    50 | class JUCE_API  AudioFormatManager
+C/C++:       |                 ^
+C/C++: In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:596:55: error: no type named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+C/C++:   596 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+C/C++:       |                                   ~~~~~~~~~~~~~~~~~~~~^
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:98:38: error: cannot initialize a parameter of type 'Listener *' with an rvalue of type 'juce::StandalonePluginHolder *'
+C/C++:    98 |         shouldMuteInput.addListener (this);
+C/C++:       |                                      ^~~~
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_data_structures/values/juce_Value.h:173:33: note: passing argument to parameter 'listener' here
+C/C++:   173 |     void addListener (Listener* listener);
+C/C++:       |                                 ^
+C/C++: In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:107:32: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+C/C++:   107 |             options.reset (new AudioDeviceManager::AudioDeviceSetup (*preferredSetupOptions));
+C/C++:       |                                ^~~~~~~~~~~~~~~~~~
+C/C++:       |                                AudioFormatManager
+C/C++: /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+C/C++:    50 | class JUCE_API  AudioFormatManager
+C/C++:       |                 ^
+C/C++: fatal error: too many errors emitted, stopping now [-ferror-limit=]
+C/C++: 20 errors generated.
+
+> Task :app:buildCMakeRelWithDebInfo[arm64-v8a] FAILED
+WARNING: The following problems were found when resolving the SDK location:
+Where: sdk.dir property in local.properties file. Problem: Directory does not exist
+
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:buildCMakeRelWithDebInfo[arm64-v8a]'.
+> com.android.ide.common.process.ProcessException: ninja: Entering directory `/home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/.cxx/RelWithDebInfo/3t105v66/arm64-v8a'
+  [1/93] Building C object CMakeFiles/cpufeatures.dir/usr/local/lib/android/sdk/ndk/28.1.13356709/sources/android/cpufeatures/cpu-features.c.o
+  [2/93] Linking C static library libcpufeatures.a
+  [3/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/JuceLibraryCode/BinaryData.cpp.o
+  [4/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/JuceLibraryCode/include_juce_audio_plugin_client_ARA.cpp.o
+  [5/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp.o
+  FAILED: CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp.o 
+  /usr/local/lib/android/sdk/ndk/28.1.13356709/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=aarch64-none-linux-android26 --sysroot=/usr/local/lib/android/sdk/ndk/28.1.13356709/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DJUCER_ANDROIDSTUDIO_7F0E4A25=1 -DJUCE_ANDROID=1 -DJUCE_ANDROID_API_VERSION=26 -DJUCE_ANDROID_GL_ES_VERSION_3_0=1 -DJUCE_APP_VERSION=1.1.0 -DJUCE_APP_VERSION_HEX=0x10100 -DJUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 -DJUCE_MODULE_AVAILABLE_juce_audio_basics=1 -DJUCE_MODULE_AVAILABLE_juce_audio_devices=1 -DJUCE_MODULE_AVAILABLE_juce_audio_formats=1 -DJUCE_MODULE_AVAILABLE_juce_audio_plugin_client=1 -DJUCE_MODULE_AVAILABLE_juce_audio_processors=1 -DJUCE_MODULE_AVAILABLE_juce_audio_processors_headless=1 -DJUCE_MODULE_AVAILABLE_juce_audio_utils=1 -DJUCE_MODULE_AVAILABLE_juce_core=1 -DJUCE_MODULE_AVAILABLE_juce_data_structures=1 -DJUCE_MODULE_AVAILABLE_juce_dsp=1 -DJUCE_MODULE_AVAILABLE_juce_events=1 -DJUCE_MODULE_AVAILABLE_juce_graphics=1 -DJUCE_MODULE_AVAILABLE_juce_gui_basics=1 -DJUCE_MODULE_AVAILABLE_juce_gui_extra=1 -DJUCE_PROJUCER_VERSION=0x8000f -DJUCE_PUSH_NOTIFICATIONS=1 -DJUCE_PUSH_NOTIFICATIONS_ACTIVITY=\"com/rmsl/juce/JuceActivity\" -DJUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone -DJUCE_STRICT_REFCOUNTEDPOINTER=1 -DJUCE_USE_CURL=0 -DJUCE_VST3_CAN_REPLACE_VST2=0 -DJUCE_WEB_BROWSER=0 -DJucePlugin_AAXCategory=2048 -DJucePlugin_AAXDisableBypass=0 -DJucePlugin_AAXDisableMultiMono=0 -DJucePlugin_AAXIdentifier=com.DIYAudio.Zenthesizer -DJucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode -DJucePlugin_AAXProductId=JucePlugin_PluginCode -DJucePlugin_ARACompatibleArchiveIDs=\"\" -DJucePlugin_ARAContentTypes=0 -DJucePlugin_ARADocumentArchiveID=\"com.DIYAudio.Zenthesizer.aradocumentarchive.1.1.0\" -DJucePlugin_ARAFactoryID=\"com.DIYAudio.Zenthesizer.factory\" -DJucePlugin_ARATransformationFlags=0 -DJucePlugin_AUExportPrefix=ZenthesizerAU -DJucePlugin_AUExportPrefixQuoted=\"ZenthesizerAU\" -DJucePlugin_AUMainType="'aumu'" -DJucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode -DJucePlugin_AUSubType=JucePlugin_PluginCode -DJucePlugin_Build_AAX=0 -DJucePlugin_Build_AU=0 -DJucePlugin_Build_AUv3=0 -DJucePlugin_Build_LV2=0 -DJucePlugin_Build_Standalone=1 -DJucePlugin_Build_Unity=0 -DJucePlugin_Build_VST3=0 -DJucePlugin_Build_VST=0 -DJucePlugin_CFBundleIdentifier=com.diyaudio.zenthesizer -DJucePlugin_Desc="\"Organic touch synthesizer\"" -DJucePlugin_EditorRequiresKeyboardFocus=0 -DJucePlugin_Enable_ARA=0 -DJucePlugin_Enable_IAA=0 -DJucePlugin_IAAName="\"DIY Audio: Zenthesizer\"" -DJucePlugin_IAASubType=JucePlugin_PluginCode -DJucePlugin_IAAType=0x61757269 -DJucePlugin_IsMidiEffect=0 -DJucePlugin_IsSynth=1 -DJucePlugin_LV2PluginClass=InstrumentPlugin -DJucePlugin_Manufacturer="\"DIY Audio\"" -DJucePlugin_ManufacturerCode=0x44697961 -DJucePlugin_ManufacturerEmail=\"\" -DJucePlugin_ManufacturerWebsite=\"www.DIYAudio.com\" -DJucePlugin_Name=\"Zenthesizer\" -DJucePlugin_PluginCode=0x5a656e31 -DJucePlugin_ProducesMidiOutput=0 -DJucePlugin_VSTCategory=kPlugCategSynth -DJucePlugin_VSTNumMidiInputs=16 -DJucePlugin_VSTNumMidiOutputs=16 -DJucePlugin_VSTUniqueID=JucePlugin_PluginCode -DJucePlugin_Version=1.1.0 -DJucePlugin_VersionCode=0x10100 -DJucePlugin_VersionString=\"1.1.0\" -DJucePlugin_Vst3Category="\"Instrument|Synth\"" -DJucePlugin_WantsMidiInput=1 -DNDEBUG=1 -Djuce_jni_EXPORTS -I/home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JuceLibraryCode -I/home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules -I/usr/local/lib/android/sdk/ndk/28.1.13356709/sources/android/cpufeatures -I/home/runner/work/Zenthesizer/Zenthesizer/JUCE/modules/juce_audio_devices/native/oboe/include -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D__ANDROID_UNAVAILABLE_SYMBOLS_ARE_WEAK__ -Werror=unguarded-availability -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security -fexceptions -frtti -O3 -O2 -g -DNDEBUG -fPIC -fsigned-char -std=c++17 -MD -MT CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp.o -MF CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp.o.d -o CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp.o -c /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp
+  In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:54:43: error: expected class name
+     54 | class StandalonePluginHolder    : private AudioIODeviceCallback,
+        |                                           ^
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:81:35: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+     81 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions = nullptr,
+        |                                   ^~~~~~~~~~~~~~~~~~
+        |                                   AudioFormatManager
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+     50 | class JUCE_API  AudioFormatManager
+        |                 ^
+  In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:81:55: error: no type named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+     81 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions = nullptr,
+        |                                   ~~~~~~~~~~~~~~~~~~~~^
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:335:40: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+    335 |                                  const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+        |                                        ^~~~~~~~~~~~~~~~~~
+        |                                        AudioFormatManager
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+     50 | class JUCE_API  AudioFormatManager
+        |                 ^
+  In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:335:60: error: no type named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+    335 |                                  const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+        |                                        ~~~~~~~~~~~~~~~~~~~~^
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:426:5: error: unknown type name 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+    426 |     AudioDeviceManager deviceManager;
+        |     ^~~~~~~~~~~~~~~~~~
+        |     AudioFormatManager
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+     50 | class JUCE_API  AudioFormatManager
+        |                 ^
+  In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:427:5: error: unknown type name 'AudioProcessorPlayer'
+    427 |     AudioProcessorPlayer player;
+        |     ^
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:437:21: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+    437 |     std::unique_ptr<AudioDeviceManager::AudioDeviceSetup> options;
+        |                     ^~~~~~~~~~~~~~~~~~
+        |                     AudioFormatManager
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+     50 | class JUCE_API  AudioFormatManager
+        |                 ^
+  In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:437:41: error: no member named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+    437 |     std::unique_ptr<AudioDeviceManager::AudioDeviceSetup> options;
+        |                     ~~~~~~~~~~~~~~~~~~~~^
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:438:11: error: use of undeclared identifier 'MidiDeviceInfo'
+    438 |     Array<MidiDeviceInfo> lastMidiDevices;
+        |           ^
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:467:28: error: unknown type name 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+    467 |                            AudioDeviceManager& deviceManagerToUse,
+        |                            ^~~~~~~~~~~~~~~~~~
+        |                            AudioFormatManager
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+     50 | class JUCE_API  AudioFormatManager
+        |                 ^
+  In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:546:9: error: unknown type name 'AudioDeviceSelectorComponent'
+    546 |         AudioDeviceSelectorComponent deviceSelector;
+        |         ^
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:561:50: error: unknown type name 'AudioIODeviceCallbackContext'
+    561 |                                            const AudioIODeviceCallbackContext& context) override
+        |                                                  ^
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:577:35: error: unknown type name 'AudioIODevice'
+    577 |     void audioDeviceAboutToStart (AudioIODevice* device) override
+        |                                   ^
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:586:31: error: only virtual member functions can be marked 'override'
+    586 |     void audioDeviceStopped() override
+        |                               ^~~~~~~~
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:596:35: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+    596 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+        |                                   ^~~~~~~~~~~~~~~~~~
+        |                                   AudioFormatManager
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+     50 | class JUCE_API  AudioFormatManager
+        |                 ^
+  In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:596:55: error: no type named 'AudioDeviceSetup' in 'juce::AudioFormatManager'
+    596 |                             const AudioDeviceManager::AudioDeviceSetup* preferredSetupOptions)
+        |                                   ~~~~~~~~~~~~~~~~~~~~^
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:98:38: error: cannot initialize a parameter of type 'Listener *' with an rvalue of type 'juce::StandalonePluginHolder *'
+     98 |         shouldMuteInput.addListener (this);
+        |                                      ^~~~
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_data_structures/values/juce_Value.h:173:33: note: passing argument to parameter 'listener' here
+    173 |     void addListener (Listener* listener);
+        |                                 ^
+  In file included from /home/runner/work/Zenthesizer/Zenthesizer/Source/PluginEditor.cpp:5:
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h:107:32: error: use of undeclared identifier 'AudioDeviceManager'; did you mean 'AudioFormatManager'?
+    107 |             options.reset (new AudioDeviceManager::AudioDeviceSetup (*preferredSetupOptions));
+        |                                ^~~~~~~~~~~~~~~~~~
+        |                                AudioFormatManager
+  /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/../../../JUCE/modules/juce_audio_formats/format/juce_AudioFormatManager.h:50:17: note: 'AudioFormatManager' declared here
+     50 | class JUCE_API  AudioFormatManager
+        |                 ^
+  fatal error: too many errors emitted, stopping now [-ferror-limit=]
+  20 errors generated.
+  [6/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/JuceLibraryCode/include_juce_audio_plugin_client_Standalone.cpp.o
+  [7/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/Source/PluginProcessor.cpp.o
+  [8/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/JuceLibraryCode/include_juce_audio_basics.cpp.o
+  [9/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/JuceLibraryCode/include_juce_audio_devices.cpp.o
+  [10/93] Building CXX object CMakeFiles/juce_jni.dir/home/runner/work/Zenthesizer/Zenthesizer/JuceLibraryCode/include_juce_audio_formats.cpp.o
+  ninja: build stopped: subcommand failed.
+  
+  C++ build system [build] failed while executing:
+      /usr/local/lib/android/sdk/cmake/3.22.1/bin/ninja \
+        -C \
+        /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app/.cxx/RelWithDebInfo/3t105v66/arm64-v8a \
+        juce_jni
+    from /home/runner/work/Zenthesizer/Zenthesizer/Builds/Android/app
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 1m 14s
+2 actionable tasks: 2 executed
