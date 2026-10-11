@@ -1,0 +1,695 @@
+#pragma once
+
+// The whole Zenthesizer sound engine: MIDI in -> plates / keys / arp -> 8 voices -> FX -> stereo out.
+// Plain C++ (no JUCE) so it can be tested on its own.
+
+#include "Common.h"
+#include "Fx.h"
+#include "Maps.h"
+#include "Settings.h"
+#include "Voice.h"
+#include "Wavetables.h"
+#include <array>
+#include <atomic>
+#include <cstdint>
+
+namespace zen
+{
+    struct MidiEvent
+    {
+        int offset = 0;
+        uint8_t status = 0, d1 = 0, d2 = 0;
+    };
+
+    // Written by the audio thread, read by the UI's timer. Relaxed atomics only.
+    struct Display
+    {
+        static constexpr int scopeSize = 1024, maxVoices = 8;
+        std::array<std::atomic<float>, scopeSize> scope {};
+        std::atomic<int> scopeWrite { 0 };
+
+        std::array<std::atomic<float>, maxVoices> voiceLevel {}, voicePitch {}, voicePress {};
+        std::array<std::atomic<int>, maxVoices> voicePlate {};
+        std::array<std::atomic<float>, numPlates> plateLevel {};   // note plates: glow; timbre plates: value
+        std::array<std::atomic<float>, numSrc> src {};
+        std::array<std::atomic<float>, numDst> dstNorm {};
+        std::atomic<int> noteOnCount { 0 }, lastPlate { -1 };
+        std::atomic<float> lastPitch { 60.0f }, lastVel { 0.0f };
+        std::atomic<int> inCount { 0 }, inNote { -1 }, inChannel { 0 };   // last incoming note-on (for pad learn)
+        std::atomic<float> cutoffHzNow { 1000.0f };
+        std::atomic<int> activeVoices { 0 };
+    };
+
+    class Engine
+    {
+    public:
+        static constexpr int maxVoices = Display::maxVoices;
+        static constexpr int chunk = 32;
+
+        Engine()
+        {
+            for (auto& u : uiPlate) u.store (-1.0f);
+            (void) Wavetables::get();   // build the tables up front, not on the audio thread
+        }
+
+        void prepare (double sampleRate)
+        {
+            fs = (float) sampleRate;
+            chorus.prepare (fs); delay.prepare (fs); reverb.prepare (fs);
+            for (auto& v : voices) { v.active = false; v.amp.reset(); v.noiseHP.setCutoff (300.0f, fs); v.noiseLP.setCutoff (7000.0f, fs); }
+            bufL.assign (4096, 0.0f); bufR.assign (4096, 0.0f);
+            drift1.prepare (fs / (float) chunk, 1.0f, 11u);
+            drift2.prepare (fs / (float) chunk, 1.0f, 23u);
+            reset();
+        }
+
+        void reset()
+        {
+            for (auto& v : voices) { v.active = false; v.gate = false; v.amp.reset(); v.e1.reset(); v.e2.reset(); }
+            chorus.clear(); delay.clear(); reverb.clear();
+            for (auto& p : plates) p = PlateState {};
+            heldCount = 0; arpPlaying = -1; arpCounter = 0.0; arpStep = 0;
+            sustainPedal = false;
+        }
+
+        // UI: press/release a plate with the mouse (pressure 0..1, or < 0 for released).
+        void setUiPlate (int plate, float pressure) noexcept
+        {
+            if (plate >= 0 && plate < numPlates) uiPlate[(size_t) plate].store (pressure);
+        }
+
+        void process (const Settings& s, const MidiEvent* ev, int numEv, float* outL, float* outR, int n)
+        {
+            set = &s;
+            pollUiPlates();
+            int e = 0;
+            for (int start = 0; start < n; start += chunk)
+            {
+                const int len = std::min (chunk, n - start);
+                while (e < numEv && ev[e].offset < start + len) handleMidi (ev[e++]);
+                controlTick (len);
+                std::fill (outL + start, outL + start + len, 0.0f);
+                std::fill (outR + start, outR + start + len, 0.0f);
+                for (int vi = 0; vi < maxVoices; ++vi)
+                    if (voices[(size_t) vi].active) renderVoice (vi, outL + start, outR + start, len);
+            }
+            while (e < numEv) handleMidi (ev[e++]);
+
+            // FX in blocks of up to 4096
+            for (int start = 0; start < n; start += 4096)
+            {
+                const int len = std::min (4096, n - start);
+                float* L = outL + start; float* R = outR + start;
+                chorus.process (L, R, len, clamp01 (s.chorusMix + gMod[(int) Dst::chorusMix]), s.chorusDepth, s.chorusRate);
+                delay.process (L, R, len, s.delayTime, s.delaySync, s.bpm, s.delayFeedback, s.delayTone,
+                               clamp01 (s.delayMix + gMod[(int) Dst::delayMix]));
+                reverb.process (L, R, len, s.reverbSize, s.reverbDecay, s.reverbDamp, s.reverbShimmer,
+                                clamp01 (s.reverbMix + gMod[(int) Dst::reverbMix]));
+                const float vol = dbToGain (volumeDb (s.volume));
+                for (int i = 0; i < len; ++i)
+                {
+                    L[i] = softClip (L[i] * vol);
+                    R[i] = softClip (R[i] * vol);
+                    const int w = scopeW;
+                    display.scope[(size_t) w].store (0.5f * (L[i] + R[i]), std::memory_order_relaxed);
+                    scopeW = (w + 1) & (Display::scopeSize - 1);
+                }
+            }
+            display.scopeWrite.store (scopeW, std::memory_order_relaxed);
+            publishDisplay();
+        }
+
+        Display display;
+
+    private:
+        //======================================================================
+        struct PlateState
+        {
+            bool down = false, fromUi = false;
+            float press = 0.0f, target = 0.0f;
+        };
+
+        struct Held { int id; float pitch; float vel; };
+
+        const Settings* set = nullptr;
+        float fs = 48000.0f;
+        std::array<Voice, maxVoices> voices {};
+        std::array<PlateState, numPlates> plates {};
+        std::array<std::atomic<float>, numPlates> uiPlate {};
+        std::array<float, numPlates> uiLast {};
+        uint32_t serial = 1;
+
+        float wheel = 0.0f, chanAT = 0.0f, bend = 0.0f;
+        bool sustainPedal = false;
+
+        // modulators
+        float lfo1Phase = 0.0f, lfo2Phase = 0.0f, lfo1 = 0.0f, lfo2 = 0.0f;
+        Wander drift1, drift2;
+        float randHeld = 0.0f, randOut = 0.0f, randPhase = 0.0f;
+        Rng rng;
+        std::array<float, numDst> gMod {};
+
+        // arpeggiator
+        std::array<Held, 32> held {};
+        int heldCount = 0;
+        bool arpLatched = false;   // hold mode: keys released, pattern still playing
+        int arpPlaying = -1;       // voice id currently sounding
+        double arpCounter = 0.0, arpGateLeft = 0.0;
+        int arpStep = 0;
+
+        Chorus chorus; PingPong delay; Reverb reverb;
+        std::vector<float> bufL, bufR;
+        int scopeW = 0;
+
+        //======================================================================
+        static int keyId (int ch, int note) noexcept   { return (ch << 8) | note; }
+        static int plateId (int p) noexcept            { return 10000 + p; }
+
+        int plateForNote (int note, int channel) const noexcept
+        {
+            if (! set->platesFromPads) return -1;
+            if (set->padChannel != 0 && set->padChannel != channel) return -1;
+            for (int p = 0; p < numPlates; ++p)
+                if (set->padNotes[(size_t) p] == note) return p;
+            return -1;
+        }
+
+        void handleMidi (const MidiEvent& m)
+        {
+            const int type = m.status & 0xF0, ch = (m.status & 0x0F) + 1;
+            if (type == 0x90 && m.d2 > 0)
+            {
+                display.inNote.store (m.d1); display.inChannel.store (ch);
+                display.inCount.fetch_add (1);
+                const int p = plateForNote (m.d1, ch);
+                if (p >= 0) plateDown (p, m.d2 / 127.0f, false);
+                else noteOn (keyId (ch, m.d1), (float) m.d1, m.d2 / 127.0f, -1);
+            }
+            else if (type == 0x80 || (type == 0x90 && m.d2 == 0))
+            {
+                const int p = plateForNote (m.d1, ch);
+                if (p >= 0) plateUp (p);
+                else noteOff (keyId (ch, m.d1));
+            }
+            else if (type == 0xA0)   // polyphonic aftertouch
+            {
+                const float v = m.d2 / 127.0f;
+                const int p = plateForNote (m.d1, ch);
+                if (p >= 0) plates[(size_t) p].target = v;
+                else setPressure (keyId (ch, m.d1), v);
+            }
+            else if (type == 0xD0) chanAT = m.d1 / 127.0f;
+            else if (type == 0xE0) bend = ((float) ((m.d2 << 7) | m.d1) - 8192.0f) / 8192.0f * 2.0f;
+            else if (type == 0xB0)
+            {
+                if (m.d1 == 1) wheel = m.d2 / 127.0f;
+                else if (m.d1 == 64)
+                {
+                    const bool on = m.d2 >= 64;
+                    if (sustainPedal && ! on)
+                        for (auto& v : voices) if (v.active && v.sustained) { v.sustained = false; v.release(); }
+                    sustainPedal = on;
+                }
+                else if (m.d1 == 123 || m.d1 == 120)
+                {
+                    for (auto& v : voices) if (v.active) v.release();
+                    heldCount = 0; arpLatched = false;
+                }
+            }
+        }
+
+        // ---- plates -----------------------------------------------------------
+        void plateDown (int p, float vel, bool fromUi)
+        {
+            auto& ps = plates[(size_t) p];
+            ps.down = true; ps.fromUi = fromUi;
+            if (p < numNotePlates)
+            {
+                ps.target = fromUi ? vel : 0.0f;
+                noteOn (plateId (p), (float) plateNote (p, set->root, set->scale, set->octave), fromUi ? 0.8f : vel, p);
+            }
+            else
+            {
+                // timbre plate: the strike itself sets a starting value, pressure takes over
+                ps.target = std::max (ps.target * (set->latchTimbre ? 1.0f : 0.0f), vel * 0.6f);
+            }
+        }
+
+        void plateUp (int p)
+        {
+            auto& ps = plates[(size_t) p];
+            ps.down = false;
+            if (p < numNotePlates) { ps.target = 0.0f; noteOff (plateId (p)); }
+            else if (! set->latchTimbre) ps.target = 0.0f;
+        }
+
+        void pollUiPlates()
+        {
+            for (int p = 0; p < numPlates; ++p)
+            {
+                const float u = uiPlate[(size_t) p].load();
+                const float last = uiLast[(size_t) p];
+                if (u >= 0.0f && last < 0.0f) plateDown (p, std::max (0.05f, u), true);
+                else if (u < 0.0f && last >= 0.0f) plateUp (p);
+                else if (u >= 0.0f) plates[(size_t) p].target = u;
+                uiLast[(size_t) p] = u;
+            }
+        }
+
+        // ---- notes ------------------------------------------------------------
+        void noteOn (int id, float pitch, float vel, int plate)
+        {
+            if (set->arpOn)
+            {
+                if (arpLatched) { heldCount = 0; arpLatched = false; }
+                if (heldCount < (int) held.size()) held[(size_t) heldCount++] = { id, pitch, vel };
+                if (heldCount == 1) { arpCounter = 0.0; arpStep = 0; }
+                return;
+            }
+            startVoice (id, pitch, vel, plate);
+        }
+
+        void noteOff (int id)
+        {
+            if (set->arpOn)
+            {
+                if (set->arpHold)
+                {
+                    bool anyDown = false;
+                    for (int i = 0; i < heldCount; ++i) if (held[(size_t) i].id != id && isStillDown (held[(size_t) i].id)) anyDown = true;
+                    if (! anyDown) arpLatched = true;
+                    return;
+                }
+                for (int i = 0; i < heldCount; ++i)
+                    if (held[(size_t) i].id == id)
+                    {
+                        for (int j = i; j < heldCount - 1; ++j) held[(size_t) j] = held[(size_t) j + 1];
+                        --heldCount;
+                        break;
+                    }
+                return;
+            }
+            for (auto& v : voices)
+                if (v.active && v.gate && v.id == id)
+                {
+                    if (sustainPedal) v.sustained = true;
+                    else v.release();
+                }
+        }
+
+        bool isStillDown (int id) const noexcept
+        {
+            if (id >= 10000) return plates[(size_t) (id - 10000)].down;
+            return false;   // keys: we only see the note-off that is happening now
+        }
+
+        void setPressure (int id, float v)
+        {
+            for (auto& vc : voices) if (vc.active && vc.id == id) vc.pressTarget = v;
+        }
+
+        int allocate (int id)
+        {
+            for (int i = 0; i < maxVoices; ++i) if (voices[(size_t) i].active && voices[(size_t) i].id == id) return i;
+            for (int i = 0; i < maxVoices; ++i) if (! voices[(size_t) i].active) return i;
+            int best = -1; float bestLevel = 10.0f;
+            for (int i = 0; i < maxVoices; ++i)
+                if (! voices[(size_t) i].gate && voices[(size_t) i].amp.level < bestLevel) { best = i; bestLevel = voices[(size_t) i].amp.level; }
+            if (best >= 0) return best;
+            uint32_t oldest = 0xFFFFFFFFu;
+            for (int i = 0; i < maxVoices; ++i) if (voices[(size_t) i].age < oldest) { oldest = voices[(size_t) i].age; best = i; }
+            return best;
+        }
+
+        void startVoice (int id, float pitch, float vel, int plate)
+        {
+            const int i = allocate (id);
+            auto& v = voices[(size_t) i];
+            const bool glide = set->glide > 0.001f;
+            if (glide && ! v.active) v.pitch = lastStartedPitch;   // glide from the last note played
+            const uint32_t seed = serial * 747796405u + 2891336453u;
+            v.start (id, pitch, vel, plate, glide, serial++, seed);
+            lastStartedPitch = pitch;
+            display.noteOnCount.fetch_add (1);
+            display.lastPlate.store (plate);
+            display.lastPitch.store (pitch);
+            display.lastVel.store (vel);
+        }
+        float lastStartedPitch = 60.0f;
+
+        // ---- arp ----------------------------------------------------------------
+        void arpTick (int len)
+        {
+            if (! set->arpOn)
+            {
+                if (heldCount > 0 || arpPlaying >= 0) { stopArpVoice(); heldCount = 0; arpLatched = false; }
+                return;
+            }
+            if (arpPlaying >= 0)
+            {
+                arpGateLeft -= len;
+                if (arpGateLeft <= 0.0) stopArpVoice();
+            }
+            if (heldCount == 0) { arpCounter = 0.0; return; }
+
+            const float bpm = set->bpm > 1.0f ? set->bpm : 110.0f;
+            const double stepLen = arpBeats (set->arpRate) * 60.0 / bpm * fs;
+            arpCounter -= len;
+            if (arpCounter > 0.0) return;
+            arpCounter += stepLen;
+            if (arpCounter < 0.0) arpCounter = stepLen;
+
+            // build the pattern
+            float pitches[128]; float vels[128]; int count = 0;
+            int order[32];
+            for (int i = 0; i < heldCount; ++i) order[i] = i;
+            if (set->arpMode != ArpMode::played)
+                std::sort (order, order + heldCount, [this] (int a, int b) { return held[(size_t) a].pitch < held[(size_t) b].pitch; });
+            const int oct = std::max (1, std::min (4, set->arpOctaves));
+            for (int o = 0; o < oct; ++o)
+                for (int i = 0; i < heldCount && count < 128; ++i)
+                {
+                    pitches[count] = held[(size_t) order[i]].pitch + 12.0f * (float) o;
+                    vels[count] = held[(size_t) order[i]].vel;
+                    ++count;
+                }
+            if (count == 0) return;
+
+            int idx = 0;
+            switch (set->arpMode)
+            {
+                case ArpMode::up: case ArpMode::played: idx = arpStep % count; break;
+                case ArpMode::down: idx = count - 1 - (arpStep % count); break;
+                case ArpMode::upDown:
+                {
+                    const int cycle = std::max (1, 2 * count - 2);
+                    const int k = arpStep % cycle;
+                    idx = k < count ? k : cycle - k;
+                    break;
+                }
+                case ArpMode::random: default:
+                    idx = (int) ((rng.next() * 0.5f + 0.5f) * (float) count) % count; break;
+            }
+            ++arpStep;
+
+            stopArpVoice();
+            arpPlaying = 20000 + (arpStep & 1023);
+            startVoice (arpPlaying, pitches[idx], vels[idx], -1);
+            arpGateLeft = stepLen * clampf (set->arpGate, 0.05f, 1.0f);
+        }
+
+        void stopArpVoice()
+        {
+            if (arpPlaying < 0) return;
+            for (auto& v : voices) if (v.active && v.gate && v.id == arpPlaying) v.release();
+            arpPlaying = -1;
+        }
+
+        // ---- control rate -------------------------------------------------------
+        static float lfoShape (LfoShape sh, float ph, Wander& dr) noexcept
+        {
+            switch (sh)
+            {
+                case LfoShape::sine:     return std::sin (twoPi * ph);
+                case LfoShape::triangle: return 1.0f - 4.0f * std::abs (ph - 0.5f);
+                case LfoShape::saw:      return 1.0f - 2.0f * ph;
+                case LfoShape::square:   return ph < 0.5f ? 1.0f : -1.0f;
+                case LfoShape::drift: default: return dr.next();
+            }
+        }
+
+        float globalSrc (Src sr) const noexcept
+        {
+            switch (sr)
+            {
+                case Src::lfo1: return lfo1;
+                case Src::lfo2: return lfo2;
+                case Src::rand: return randOut;
+                case Src::wheel: return wheel;
+                case Src::chanAT: return chanAT;
+                case Src::plateA: return plates[12].press;
+                case Src::plateB: return plates[13].press;
+                case Src::plateC: return plates[14].press;
+                case Src::plateD: return plates[15].press;
+                default: return 0.0f;
+            }
+        }
+
+        float voiceSrc (Src sr, const Voice& v) const noexcept
+        {
+            switch (sr)
+            {
+                case Src::env1:  return v.e1.level;
+                case Src::env2:  return v.e2.level;
+                case Src::press: return v.press;
+                case Src::vel:   return v.vel;
+                case Src::key:   return clampf ((v.pitch - 60.0f) / 24.0f, -1.0f, 1.0f);
+                default:         return globalSrc (sr);
+            }
+        }
+
+        const Voice* newestVoice() const noexcept
+        {
+            const Voice* best = nullptr;
+            for (auto& v : voices) if (v.active && (best == nullptr || v.age > best->age)) best = &v;
+            return best;
+        }
+
+        void controlTick (int len)
+        {
+            const auto& s = *set;
+            arpTick (len);
+
+            // LFOs (rates can be modulated by global sources)
+            const float r1 = lfoHz (s.lfo1Rate) * std::pow (2.0f, gMod[(int) Dst::lfo1Rate] * 4.0f);
+            const float r2 = lfoHz (s.lfo2Rate) * std::pow (2.0f, gMod[(int) Dst::lfo2Rate] * 4.0f);
+            lfo1Phase += r1 * (float) len / fs; lfo1Phase -= std::floor (lfo1Phase);
+            lfo2Phase += r2 * (float) len / fs; lfo2Phase -= std::floor (lfo2Phase);
+            drift1.period = std::max (1, (int) (fs / (float) len / std::max (0.02f, r1)));
+            drift2.period = std::max (1, (int) (fs / (float) len / std::max (0.02f, r2)));
+            lfo1 = lfoShape (s.lfo1Shape, lfo1Phase, drift1);
+            lfo2 = lfoShape (s.lfo2Shape, lfo2Phase, drift2);
+
+            // smoothed random
+            randPhase += lfoHz (s.randRate) * (float) len / fs;
+            if (randPhase >= 1.0f) { randPhase -= std::floor (randPhase); randHeld = rng.next(); }
+            const float smoothSec = 0.002f + clamp01 (s.randSmooth) / std::max (0.05f, lfoHz (s.randRate));
+            randOut += (randHeld - randOut) * (1.0f - std::exp (-(float) len / (smoothSec * fs)));
+
+            // plates (pressure smoothing ~15 ms)
+            const float pc = 1.0f - std::exp (-(float) len / (0.015f * fs));
+            for (int p = 0; p < numPlates; ++p) plates[(size_t) p].press += (plates[(size_t) p].target - plates[(size_t) p].press) * pc;
+            for (auto& v : voices)
+                if (v.active && v.plate >= 0) v.pressTarget = plates[(size_t) v.plate].target;
+
+            // global destinations, from global sources (+ the newest voice for per-voice sources)
+            gMod.fill (0.0f);
+            const Voice* nv = newestVoice();
+            for (auto& sl : s.slots)
+            {
+                if (sl.src == Src::none || sl.dst == Dst::none || ! isGlobalDst (sl.dst)) continue;
+                const float sv = nv != nullptr ? voiceSrc (sl.src, *nv) : globalSrc (sl.src);
+                gMod[(size_t) sl.dst] += sl.amount * sv;
+            }
+        }
+
+        // ---- one voice, one chunk ----------------------------------------------
+        void renderVoice (int vi, float* outL, float* outR, int n)
+        {
+            const auto& s = *set;
+            auto& v = voices[(size_t) vi];
+
+            v.amp.set (s.ampA, s.ampD, s.ampS, s.ampR, fs);
+            v.e1.set (s.e1A, s.e1D, s.e1S, s.e1R, fs);
+            v.e2.set (s.e2A, s.e2D, s.e2S, s.e2R, fs);
+            v.e1.advance (n); v.e2.advance (n);
+            v.press += (v.pressTarget - v.press) * (1.0f - std::exp (-(float) n / (0.015f * fs)));
+
+            float m[numDst] {};
+            for (auto& sl : s.slots)
+                if (sl.src != Src::none && sl.dst != Dst::none && ! isGlobalDst (sl.dst))
+                    m[(int) sl.dst] += sl.amount * voiceSrc (sl.src, v);
+
+            // glide
+            const float gs = glideSec (s.glide);
+            if (gs <= 0.0f) v.pitch = v.note;
+            else v.pitch += (v.note - v.pitch) * (1.0f - std::exp (-(float) n / (gs * 0.4f * fs)));
+
+            const float pitchOffs = m[(int) Dst::pitch] * 12.0f + bend;
+            const float semisA = v.pitch + pitchOffs + tuneSemisSnapped (s.aTune) + m[(int) Dst::aTune] * 24.0f;
+            const float semisB = v.pitch + pitchOffs;
+            const float hzA = 440.0f * std::pow (2.0f, (semisA - 69.0f) / 12.0f);
+            const float hzB = 440.0f * std::pow (2.0f, (semisB - 69.0f) / 12.0f);
+
+            const float aDet   = clamp01 (s.aDetune + m[(int) Dst::aDetune]);
+            const float aShape = clamp01 (s.aShape + m[(int) Dst::aShape]);
+            const float aLev   = clamp01 (s.aLevel + m[(int) Dst::aLevel]);
+            const float bPos   = clamp01 (s.bPos + m[(int) Dst::bPos]);
+            const float bWarp  = clamp01 (s.bWarp + m[(int) Dst::bWarp]);
+            const float bUni   = clamp01 (s.bUnison + m[(int) Dst::bUnison]);
+            const float bLev   = clamp01 (s.bLevel + m[(int) Dst::bLevel]);
+            const float airLev = clamp01 (s.air + m[(int) Dst::air]);
+            const float res    = clamp01 (s.res + m[(int) Dst::res]);
+            const float drive  = clamp01 (s.drive + m[(int) Dst::drive]);
+            const float cutN   = clampf (s.cutoff + m[(int) Dst::cutoff] + bipolar (s.envAmt) * 0.6f * v.e1.level
+                                         + s.keyTrack * (v.pitch - 60.0f) / 12.0f * 0.1019f, 0.0f, 1.0f);
+            const float ampMod = clampf (1.0f + m[(int) Dst::amp], 0.0f, 2.0f);
+            const float velGain = 1.0f - clamp01 (s.velSens) * (1.0f - v.vel);
+
+            // spread voices across the stereo field
+            static const float voicePan[maxVoices] = { -0.15f, 0.15f, -0.45f, 0.45f, -0.3f, 0.3f, -0.6f, 0.6f };
+            const float pan = clampf (voicePan[vi] * s.spread + m[(int) Dst::pan], -1.0f, 1.0f);
+            v.panLT = std::cos ((pan + 1.0f) * 0.25f * pi) * 1.41421f;
+            v.panRT = std::sin ((pan + 1.0f) * 0.25f * pi) * 1.41421f;
+
+            v.aGainT = aLev; v.bGainT = bLev; v.airGT = airLev;
+            v.cutLogTarget = std::log2 (std::min (cutoffHz (cutN), fs * 0.45f));
+
+            // A: three oscillators (centre + two detuned sides)
+            const float cents = std::pow (aDet, 1.5f) * 38.0f;
+            const float ratA[3] = { 1.0f, std::pow (2.0f, -cents / 1200.0f), std::pow (2.0f, cents / 1200.0f * 1.07f) };
+            const float side = std::min (1.0f, aDet * 5.0f);
+            const float aNorm = 1.0f / (1.0f + side * 1.2f);
+            float dtA[3];
+            for (int k = 0; k < 3; ++k) dtA[k] = std::min (0.45f, hzA * ratA[k] / fs);
+
+            // B: up to five wavetable oscillators
+            const float nB = 1.0f + 4.0f * bUni;
+            static const float offs[5] = { 0.0f, -0.5f, 0.5f, -1.0f, 1.0f };
+            static const float bPanK[5] = { 0.0f, -0.5f, 0.5f, -1.0f, 1.0f };
+            float dtB[5], gB[5], bNorm = 0.0f;
+            for (int k = 0; k < 5; ++k)
+            {
+                dtB[k] = std::min (0.45f, hzB * std::pow (2.0f, offs[k] * 25.0f * bUni / 1200.0f) / fs);
+                gB[k] = k == 0 ? 1.0f : clamp01 (nB - (float) k) * 0.75f;
+                bNorm += gB[k] * gB[k];
+            }
+            bNorm = 1.0f / std::sqrt (bNorm);
+            const float warpK = 0.5f - 0.45f * bWarp;
+            const auto& tables = Wavetables::get();
+            const int table = std::min (numTables - 1, std::max (0, s.bTable));
+
+            const float k = res * 3.95f;
+            const float driveGain = 1.0f + 6.0f * drive;
+            const float driveComp = 1.0f / (1.0f + 1.6f * drive);
+            const float inv = 1.0f / (float) n;
+
+            float G = 0.0f;
+            for (int i = 0; i < n; ++i)
+            {
+                const float t = (float) (i + 1) * inv;
+                const float aG = v.aGain + (v.aGainT - v.aGain) * t;
+                const float bG = v.bGain + (v.bGainT - v.bGain) * t;
+                const float nG = v.airG + (v.airGT - v.airG) * t;
+
+                if ((i & 3) == 0)
+                {
+                    const float cl = v.cutLog + (v.cutLogTarget - v.cutLog) * t;
+                    const float g = std::tan (pi * std::exp2 (cl) / fs);
+                    G = g / (1.0f + g);
+                }
+
+                // Engine A
+                float aL = 0.0f, aR = 0.0f;
+                if (aG > 0.0001f)
+                {
+                    const float c0 = v.a[0].process (s.aWave, aShape, dtA[0]);
+                    const float c1 = v.a[1].process (s.aWave, aShape, dtA[1]);
+                    const float c2 = v.a[2].process (s.aWave, aShape, dtA[2]);
+                    aL = (c0 + side * (0.85f * c1 + 0.35f * c2)) * aNorm * aG;
+                    aR = (c0 + side * (0.85f * c2 + 0.35f * c1)) * aNorm * aG;
+                }
+                else for (int q = 0; q < 3; ++q) { v.a[q].phase += dtA[q]; if (v.a[q].phase >= 1.0f) v.a[q].phase -= 1.0f; }
+
+                // Engine B
+                float bL = 0.0f, bR = 0.0f;
+                for (int q = 0; q < 5; ++q)
+                {
+                    float& ph = v.bPhase[q];
+                    if (bG > 0.0001f && gB[q] > 0.0f)
+                    {
+                        const float pw = ph < warpK ? 0.5f * ph / warpK : 0.5f + 0.5f * (ph - warpK) / (1.0f - warpK);
+                        const float w = WaveReader::read (tables, table, bPos, pw, dtB[q] * 0.5f / warpK) * gB[q];
+                        bL += w * (1.0f - bPanK[q] * s.spread * 0.8f);
+                        bR += w * (1.0f + bPanK[q] * s.spread * 0.8f);
+                    }
+                    ph += dtB[q]; if (ph >= 1.0f) ph -= 1.0f;
+                }
+                bL *= bNorm * bG * 0.5f; bR *= bNorm * bG * 0.5f;
+
+                // breath
+                float nzL = 0.0f, nzR = 0.0f;
+                if (nG > 0.0001f)
+                {
+                    const float w1 = v.noise.next(), w2 = v.noise.next();
+                    const float x = v.noiseLP.lowpass (v.noiseHP.highpass (0.7f * w1 + 0.3f * w2));
+                    nzL = x * nG * 0.9f; nzR = (0.8f * x + 0.2f * w2 * 0.3f) * nG * 0.9f;
+                }
+
+                const float xL = (aL + bL + nzL) * driveGain * 0.6f;
+                const float xR = (aR + bR + nzR) * driveGain * 0.6f;
+                const float yL = v.lad[0].process (xL, G, k) * driveComp;
+                const float yR = v.lad[1].process (xR, G, k) * driveComp;
+
+                const float env = v.amp.next() * velGain * ampMod * 1.0f;
+                const float pl = v.panL + (v.panLT - v.panL) * t, pr = v.panR + (v.panRT - v.panR) * t;
+                outL[i] += yL * env * pl;
+                outR[i] += yR * env * pr;
+            }
+            v.aGain = v.aGainT; v.bGain = v.bGainT; v.airG = v.airGT;
+            v.cutLog = v.cutLogTarget; v.panL = v.panLT; v.panR = v.panRT;
+
+            if (v.amp.stage == Env::idle) { v.active = false; v.gate = false; }
+
+            // remember modulated knob positions of the newest voice for the UI
+            if (&v == newestVoice())
+            {
+                lastDst[(int) Dst::aDetune] = aDet; lastDst[(int) Dst::aShape] = aShape; lastDst[(int) Dst::aLevel] = aLev;
+                lastDst[(int) Dst::bPos] = bPos; lastDst[(int) Dst::bWarp] = bWarp; lastDst[(int) Dst::bUnison] = bUni;
+                lastDst[(int) Dst::bLevel] = bLev; lastDst[(int) Dst::air] = airLev; lastDst[(int) Dst::res] = res;
+                lastDst[(int) Dst::drive] = drive; lastDst[(int) Dst::cutoff] = cutN;
+                lastDst[(int) Dst::aTune] = clamp01 (s.aTune + m[(int) Dst::aTune] * 0.5f);
+                lastCutHz = std::exp2 (v.cutLog);
+            }
+        }
+
+        std::array<float, numDst> lastDst {};
+        float lastCutHz = 1000.0f;
+
+        void publishDisplay()
+        {
+            int active = 0;
+            for (int i = 0; i < maxVoices; ++i)
+            {
+                const auto& v = voices[(size_t) i];
+                if (v.active) ++active;
+                display.voiceLevel[(size_t) i].store (v.active ? v.amp.level : 0.0f, std::memory_order_relaxed);
+                display.voicePitch[(size_t) i].store (v.pitch, std::memory_order_relaxed);
+                display.voicePress[(size_t) i].store (v.press, std::memory_order_relaxed);
+                display.voicePlate[(size_t) i].store (v.active ? v.plate : -1, std::memory_order_relaxed);
+            }
+            display.activeVoices.store (active);
+
+            for (int p = 0; p < numPlates; ++p)
+            {
+                float lv = 0.0f;
+                if (p < numNotePlates)
+                {
+                    for (auto& v : voices) if (v.active && v.plate == p) lv = std::max (lv, v.amp.level * (0.6f + 0.4f * v.press));
+                    if (plates[(size_t) p].down) lv = std::max (lv, 0.35f + 0.65f * plates[(size_t) p].press);
+                }
+                else lv = plates[(size_t) p].press;
+                display.plateLevel[(size_t) p].store (lv, std::memory_order_relaxed);
+            }
+
+            const Voice* nv = newestVoice();
+            for (int sI = 1; sI < numSrc; ++sI)
+            {
+                const float val = nv != nullptr ? voiceSrc ((Src) sI, *nv) : globalSrc ((Src) sI);
+                display.src[(size_t) sI].store (val, std::memory_order_relaxed);
+            }
+            for (int d = 0; d < numDst; ++d) display.dstNorm[(size_t) d].store (nv != nullptr ? lastDst[(size_t) d] : -1.0f, std::memory_order_relaxed);
+            display.cutoffHzNow.store (lastCutHz, std::memory_order_relaxed);
+        }
+    };
+}
