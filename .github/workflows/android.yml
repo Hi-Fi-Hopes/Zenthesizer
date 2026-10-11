@@ -55,9 +55,26 @@ jobs:
           echo "org.gradle.java.installations.fromEnv=JAVA_HOME_8_X64,JAVA_HOME_17_X64" >> gradle.properties
           echo "org.gradle.jvmargs=-Xmx4g" >> gradle.properties
           chmod +x gradlew
-          ./gradlew --no-daemon assemble 2>&1 | tail -80
+          set -o pipefail
+          ./gradlew --no-daemon assemble > "$GITHUB_WORKSPACE/gradle.log" 2>&1 || (tail -80 "$GITHUB_WORKSPACE/gradle.log"; exit 1)
           find . -name "*.apk" | tee apks.txt
           test -s apks.txt
+
+      - name: Keep the build log on a branch if it failed
+        if: failure()
+        run: |
+          mkdir -p /tmp/logs
+          cp gradle.log /tmp/logs/ 2>/dev/null || true
+          grep -n "error:\|FAILED\|What went wrong" -A6 gradle.log > /tmp/logs/errors.txt 2>/dev/null || true
+          git config user.name  "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git switch --orphan android-logs
+          git rm -rfq --cached . > /dev/null 2>&1 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp /tmp/logs/* .
+          git add -A
+          git commit -qm "Android build log for $GITHUB_SHA"
+          git push --force origin android-logs
 
       - name: Collect the APK
         run: |
