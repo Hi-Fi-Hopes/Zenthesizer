@@ -1,7 +1,11 @@
 #pragma once
 
 #include <juce_audio_processors/juce_audio_processors.h>
+#include <juce_audio_formats/juce_audio_formats.h>
 #include "dsp/Engine.h"
+#include "dsp/Sandbox.h"
+#include <memory>
+#include <mutex>
 #include <array>
 #include <atomic>
 #include <map>
@@ -59,7 +63,7 @@ class ZenProcessor : public juce::AudioProcessor
 {
 public:
     ZenProcessor();
-    ~ZenProcessor() override = default;
+    ~ZenProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -86,7 +90,7 @@ public:
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     static juce::StringArray waveNames()     { return { "Saw", "Square", "Triangle", "Sine" }; }
-    static juce::StringArray tableNames()    { return { "Air", "Glass", "Vox", "Reed" }; }
+    static juce::StringArray tableNames()    { return { "Air", "Glass", "Vox", "Reed", "Own" }; }
     static juce::StringArray lfoShapeNames() { return { "Sine", "Triangle", "Saw", "Square", "Drift" }; }
     static juce::StringArray srcNames();
     static juce::StringArray srcShortNames();
@@ -114,6 +118,28 @@ public:
     int findSlot (zen::Src src, zen::Dst dst) const;
 
     const zen::Display& display() const { return engine.display; }
+
+    //==========================================================================
+    // The wavetable sandbox: Engine B's own table (OWN), made of 1..8 keyframes.
+    using Keyframes = std::vector<zen::sandbox::Cycle>;
+    Keyframes getKeyframes() const;
+    void setKeyframes (Keyframes);                       // rebuilds the table in the background
+    int keyframesVersion() const                         { return kfVersion.load(); }
+    std::shared_ptr<const zen::UserTable> getUserTable() const { return std::atomic_load (&userTable); }
+
+    // Import any audio file the device can read (WAV, AIFF, FLAC...). Replaces the keyframes.
+    bool importAudio (std::unique_ptr<juce::InputStream>, juce::String& message);
+    bool exportWavetable (const juce::File&) const;      // 32-bit float WAV, 2048 samples per keyframe
+
+    static juce::File dataFolder();                      // .../Zenthesizer
+    static juce::File wavetableFolder()                  { return dataFolder().getChildFile ("Wavetables"); }
+    static juce::File presetFolder()                     { return dataFolder().getChildFile ("Presets"); }
+
+    // User presets: everything (sound + your waves), saved as a file you can reload anywhere.
+    bool saveUserPreset (const juce::String& name);
+    bool loadUserPreset (const juce::File&);
+    static juce::Array<juce::File> userPresets();
+    juce::String currentPresetName() const;
     std::atomic<float> hostBpm { 0.0f };
 
     juce::AudioProcessorValueTreeState apvts;
@@ -126,6 +152,19 @@ private:
 
     zen::Engine engine;
     std::vector<zen::MidiEvent> events;
+
+    // sandbox
+    class TableBuilder;
+    mutable std::mutex kfLock;
+    Keyframes keyframes;
+    std::atomic<int> kfVersion { 0 };
+    std::shared_ptr<const zen::UserTable> userTable;
+    std::mutex retireLock;
+    std::vector<std::pair<juce::uint32, std::shared_ptr<const zen::UserTable>>> retired;
+    std::unique_ptr<TableBuilder> builder;
+    void publishTable (zen::UserTable);
+    void applyState (const juce::ValueTree&, bool includePlaySettings);
+    juce::String userPresetName;
     std::array<std::atomic<int>, zen::numPlates> padNotes {};
     int currentPreset = 0;
     std::map<std::string, std::atomic<float>*> raw;

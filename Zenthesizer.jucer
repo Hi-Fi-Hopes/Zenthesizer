@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- Android app build of the Zenthesizer (the Windows plugin builds from CMakeLists.txt).
+     GitHub Actions turns this into an Android Studio project with the Projucer, then builds the APK.
+     JUCE is cloned into ./JUCE by the workflow. -->
+<JUCERPROJECT id="ZnTh01" name="Zenthesizer" projectType="audioplug" useAppConfig="0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="1.1.0"
+              companyName="DIY Audio" bundleIdentifier="com.diyaudio.zenthesizer"
+              pluginFormats="buildStandalone" pluginCharacteristicsValue="pluginIsSynth,pluginWantsMidiIn"
+              pluginName="Zenthesizer" pluginDesc="Organic touch synthesizer" pluginManufacturer="DIY Audio"
+              pluginManufacturerCode="Diya" pluginCode="Zen1" cppLanguageStandard="17"
+              displaySplashScreen="0" defines="JUCE_WEB_BROWSER=0&#10;JUCE_USE_CURL=0">
+  <MAINGROUP id="ZnTh02" name="Zenthesizer">
+    <GROUP id="ZnTh03" name="Source">
+      <FILE id="ZnSr01" name="PluginProcessor.cpp" compile="1" resource="0" file="Source/PluginProcessor.cpp"/>
+      <FILE id="ZnSr02" name="PluginProcessor.h" compile="0" resource="0" file="Source/PluginProcessor.h"/>
+      <FILE id="ZnSr03" name="PluginEditor.cpp" compile="1" resource="0" file="Source/PluginEditor.cpp"/>
+      <FILE id="ZnSr04" name="PluginEditor.h" compile="0" resource="0" file="Source/PluginEditor.h"/>
+      <FILE id="ZnSr05" name="Presets.h" compile="0" resource="0" file="Source/Presets.h"/>
+      <GROUP id="ZnTh04" name="dsp">
+        <FILE id="ZnDs01" name="Common.h" compile="0" resource="0" file="Source/dsp/Common.h"/>
+        <FILE id="ZnDs02" name="Engine.h" compile="0" resource="0" file="Source/dsp/Engine.h"/>
+        <FILE id="ZnDs03" name="Fx.h" compile="0" resource="0" file="Source/dsp/Fx.h"/>
+        <FILE id="ZnDs04" name="Maps.h" compile="0" resource="0" file="Source/dsp/Maps.h"/>
+        <FILE id="ZnDs05" name="Sandbox.h" compile="0" resource="0" file="Source/dsp/Sandbox.h"/>
+        <FILE id="ZnDs06" name="Settings.h" compile="0" resource="0" file="Source/dsp/Settings.h"/>
+        <FILE id="ZnDs07" name="Voice.h" compile="0" resource="0" file="Source/dsp/Voice.h"/>
+        <FILE id="ZnDs08" name="Wavetables.h" compile="0" resource="0" file="Source/dsp/Wavetables.h"/>
+      </GROUP>
+      <GROUP id="ZnTh05" name="ui">
+        <FILE id="ZnUi01" name="Theme.h" compile="0" resource="0" file="Source/ui/Theme.h"/>
+        <FILE id="ZnUi02" name="WavePanel.h" compile="0" resource="0" file="Source/ui/WavePanel.h"/>
+        <FILE id="ZnUi03" name="Widgets.h" compile="0" resource="0" file="Source/ui/Widgets.h"/>
+        <FILE id="ZnUi04" name="Wood.h" compile="0" resource="0" file="Source/ui/Wood.h"/>
+      </GROUP>
+    </GROUP>
+    <GROUP id="ZnTh06" name="Resources">
+      <FILE id="ZnRs01" name="InstrumentSerif-Italic.ttf" compile="0" resource="1" file="Resources/InstrumentSerif-Italic.ttf"/>
+      <FILE id="ZnRs02" name="InstrumentSans-Medium.ttf" compile="0" resource="1" file="Resources/InstrumentSans-Medium.ttf"/>
+      <FILE id="ZnRs03" name="InstrumentSans-SemiBold.ttf" compile="0" resource="1" file="Resources/InstrumentSans-SemiBold.ttf"/>
+      <FILE id="ZnIc01" name="icon.png" compile="0" resource="0" file="android/icon.png"/>
+    </GROUP>
+  </MAINGROUP>
+  <EXPORTFORMATS>
+    <ANDROIDSTUDIO targetFolder="Builds/Android" androidMinimumSDK="26" androidScreenOrientation="unspecified"
+                   microphonePermissionNeeded="0" androidBluetoothScanNeeded="1" androidBluetoothConnectNeeded="1"
+                   smallIcon="ZnIc01" bigIcon="ZnIc01"
+                   androidKeyStore="${user.home}/zen.keystore" androidKeyStorePass="zenthesizer"
+                   androidKeyAlias="zenthesizer" androidKeyAliasPass="zenthesizer">
+      <CONFIGURATIONS>
+        <CONFIGURATION isDebug="0" name="Release" optimisation="3" androidArchitectures="arm64-v8a armeabi-v7a"/>
+      </CONFIGURATIONS>
+      <MODULEPATHS>
+        <MODULEPATH id="juce_audio_basics" path="JUCE/modules"/>
+        <MODULEPATH id="juce_audio_devices" path="JUCE/modules"/>
+        <MODULEPATH id="juce_audio_formats" path="JUCE/modules"/>
+        <MODULEPATH id="juce_audio_plugin_client" path="JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors" path="JUCE/modules"/>
+        <MODULEPATH id="juce_audio_processors_headless" path="JUCE/modules"/>
+        <MODULEPATH id="juce_audio_utils" path="JUCE/modules"/>
+        <MODULEPATH id="juce_core" path="JUCE/modules"/>
+        <MODULEPATH id="juce_data_structures" path="JUCE/modules"/>
+        <MODULEPATH id="juce_dsp" path="JUCE/modules"/>
+        <MODULEPATH id="juce_events" path="JUCE/modules"/>
+        <MODULEPATH id="juce_graphics" path="JUCE/modules"/>
+        <MODULEPATH id="juce_gui_basics" path="JUCE/modules"/>
+        <MODULEPATH id="juce_gui_extra" path="JUCE/modules"/>
+      </MODULEPATHS>
+    </ANDROIDSTUDIO>
+  </EXPORTFORMATS>
+  <MODULES>
+    <MODULE id="juce_audio_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_devices" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_formats" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_plugin_client" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_processors" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_processors_headless" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_audio_utils" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_core" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_data_structures" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_dsp" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_events" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+    <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
+  </MODULES>
+  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_VST3_CAN_REPLACE_VST2="0"/>
+</JUCERPROJECT>

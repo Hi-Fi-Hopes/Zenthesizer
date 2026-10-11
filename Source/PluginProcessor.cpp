@@ -164,6 +164,52 @@ juce::AudioProcessorValueTreeState::ParameterLayout ZenProcessor::createLayout()
 }
 
 //==============================================================================
+//==============================================================================
+// Builds the user's table off the audio thread; always works on the newest request.
+class ZenProcessor::TableBuilder : public juce::Thread
+{
+public:
+    explicit TableBuilder (ZenProcessor& p) : juce::Thread ("Zenthesizer table builder"), owner (p) { startThread(); }
+    ~TableBuilder() override { signalThreadShouldExit(); notify(); stopThread (4000); }
+
+    void request (Keyframes k)
+    {
+        {
+            const std::lock_guard<std::mutex> l (lock);
+            pending = std::move (k);
+            hasPending = true;
+        }
+        notify();
+    }
+
+    void run() override
+    {
+        while (! threadShouldExit())
+        {
+            Keyframes job;
+            bool got = false;
+            {
+                const std::lock_guard<std::mutex> l (lock);
+                if (hasPending) { job = std::move (pending); hasPending = false; got = true; }
+            }
+            if (got) owner.publishTable (zen::UserTable::build (job));
+            else wait (-1);
+        }
+    }
+
+private:
+    ZenProcessor& owner;
+    std::mutex lock;
+    Keyframes pending;
+    bool hasPending = false;
+};
+
+ZenProcessor::~ZenProcessor()
+{
+    builder.reset();
+    engine.setUserTable (nullptr);
+}
+
 ZenProcessor::ZenProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "ZenthesizerState", createLayout())
@@ -179,7 +225,174 @@ ZenProcessor::ZenProcessor()
         slotAmtP[(size_t) i] = apvts.getRawParameterValue (ids::slotAmt (i));
     }
     resetPadNotes();
+
+    // the sandbox starts with a gentle set of keyframes to morph through
+    {
+        using namespace zen::sandbox;
+        keyframes = { make (Shape::sine), make (Shape::organ), make (Shape::hollow), make (Shape::bell) };
+        publishTable (zen::UserTable::build (keyframes));
+    }
+    builder = std::make_unique<TableBuilder> (*this);
+
     setCurrentProgram (1);   // open on the first real preset
+}
+
+//==============================================================================
+void ZenProcessor::publishTable (zen::UserTable t)
+{
+    auto fresh = std::make_shared<const zen::UserTable> (std::move (t));
+    auto old = std::atomic_exchange (&userTable, fresh);
+    engine.setUserTable (fresh.get());
+
+    // The audio thread may still be reading the old one for the rest of its block:
+    // keep it alive for two seconds before letting it go.
+    const auto now = juce::Time::getMillisecondCounter();
+    const std::lock_guard<std::mutex> l (retireLock);
+    if (old != nullptr) retired.push_back ({ now, std::move (old) });
+    retired.erase (std::remove_if (retired.begin(), retired.end(),
+                                   [now] (const auto& r) { return now - r.first > 2000; }), retired.end());
+}
+
+ZenProcessor::Keyframes ZenProcessor::getKeyframes() const
+{
+    const std::lock_guard<std::mutex> l (kfLock);
+    return keyframes;
+}
+
+void ZenProcessor::setKeyframes (Keyframes k)
+{
+    if (k.empty()) return;
+    if ((int) k.size() > zen::maxKeyframes) k.resize ((size_t) zen::maxKeyframes);
+    for (auto& c : k) c.resize ((size_t) zen::tableSize, 0.0f);
+    {
+        const std::lock_guard<std::mutex> l (kfLock);
+        keyframes = k;
+    }
+    ++kfVersion;
+    if (builder != nullptr) builder->request (std::move (k));
+    else publishTable (zen::UserTable::build (k));
+}
+
+bool ZenProcessor::importAudio (std::unique_ptr<juce::InputStream> in, juce::String& message)
+{
+    if (in == nullptr) { message = "couldn't open that file"; return false; }
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (fm.createReaderFor (std::move (in)));
+    if (reader == nullptr) { message = "that file isn't audio the app can read (try WAV)"; return false; }
+
+    const int len = (int) std::min<juce::int64> (reader->lengthInSamples, (juce::int64) reader->sampleRate * 30);
+    if (len < 8) { message = "that file is empty"; return false; }
+    juce::AudioBuffer<float> buf ((int) std::max (1u, reader->numChannels), len);
+    reader->read (&buf, 0, len, 0, true, true);
+    std::vector<float> mono ((size_t) len, 0.0f);
+    for (int c = 0; c < buf.getNumChannels(); ++c)
+        for (int i = 0; i < len; ++i) mono[(size_t) i] += buf.getSample (c, i) / (float) buf.getNumChannels();
+
+    auto k = zen::sandbox::keyframesFromAudio (mono);
+    if (k.empty()) { message = "couldn't find a usable waveform in that file"; return false; }
+    message = juce::String ((int) k.size()) + (k.size() == 1 ? " keyframe" : " keyframes") + " imported";
+    setKeyframes (std::move (k));
+    return true;
+}
+
+bool ZenProcessor::exportWavetable (const juce::File& f) const
+{
+    const auto k = getKeyframes();
+    juce::AudioBuffer<float> buf (1, (int) k.size() * zen::tableSize);
+    for (size_t i = 0; i < k.size(); ++i)
+        buf.copyFrom (0, (int) i * zen::tableSize, k[i].data(), zen::tableSize);
+
+    f.getParentDirectory().createDirectory();
+    f.deleteFile();
+    std::unique_ptr<juce::OutputStream> os (new juce::FileOutputStream (f));
+    if (! static_cast<juce::FileOutputStream*> (os.get())->openedOk()) return false;
+    juce::WavAudioFormat wav;
+    auto writer = wav.createWriterFor (os, juce::AudioFormatWriterOptions{}.withSampleRate (48000.0).withNumChannels (1)
+                                                                          .withBitsPerSample (32)
+                                                                          .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
+    if (writer == nullptr) return false;
+    return writer->writeFromAudioSampleBuffer (buf, 0, buf.getNumSamples());
+}
+
+juce::File ZenProcessor::dataFolder()
+{
+    return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("Zenthesizer");
+}
+
+juce::Array<juce::File> ZenProcessor::userPresets()
+{
+    auto files = presetFolder().findChildFiles (juce::File::findFiles, false, "*.zenpreset");
+    files.sort();
+    return files;
+}
+
+juce::String ZenProcessor::currentPresetName() const
+{
+    if (userPresetName.isNotEmpty()) return userPresetName;
+    const auto info = presetInfo();
+    return juce::isPositiveAndBelow (currentPreset, (int) info.size()) ? info[(size_t) currentPreset].name : juce::String ("Init");
+}
+
+bool ZenProcessor::saveUserPreset (const juce::String& name)
+{
+    const auto clean = juce::File::createLegalFileName (name.trim());
+    if (clean.isEmpty()) return false;
+    juce::MemoryBlock mb;
+    getStateInformation (mb);
+    auto xml = getXmlFromBinary (mb.getData(), (int) mb.getSize());
+    if (xml == nullptr) return false;
+    xml->setAttribute ("presetName", name.trim());
+    presetFolder().createDirectory();
+    if (! xml->writeTo (presetFolder().getChildFile (clean + ".zenpreset"))) return false;
+    userPresetName = name.trim();
+    return true;
+}
+
+bool ZenProcessor::loadUserPreset (const juce::File& f)
+{
+    auto xml = juce::XmlDocument::parse (f);
+    if (xml == nullptr || ! xml->hasTagName (apvts.state.getType())) return false;
+    applyState (juce::ValueTree::fromXml (*xml), false);
+    userPresetName = xml->getStringAttribute ("presetName", f.getFileNameWithoutExtension());
+    return true;
+}
+
+// Applies a saved state. includePlaySettings = false keeps your scale, pads, etc. (loading a preset).
+void ZenProcessor::applyState (const juce::ValueTree& tree, bool includePlaySettings)
+{
+    static const juce::StringArray playIds { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre };
+    if (includePlaySettings)
+    {
+        apvts.replaceState (tree);
+    }
+    else
+    {
+        for (int i = 0; i < tree.getNumChildren(); ++i)
+        {
+            const auto child = tree.getChild (i);
+            const auto id = child.getProperty ("id").toString();
+            if (id.isEmpty() || playIds.contains (id)) continue;
+            if (auto* prm = apvts.getParameter (id))
+            {
+                prm->beginChangeGesture();
+                prm->setValueNotifyingHost (prm->convertTo0to1 ((float) (double) child.getProperty ("value")));
+                prm->endChangeGesture();
+            }
+        }
+    }
+
+    // the sandbox keyframes
+    const auto frames = (int) tree.getProperty ("ownFrames", 0);
+    juce::MemoryBlock mb;
+    if (frames > 0 && mb.fromBase64Encoding (tree.getProperty ("ownWaves", "").toString())
+        && mb.getSize() == (size_t) frames * zen::tableSize * sizeof (float))
+    {
+        Keyframes k ((size_t) frames, zen::sandbox::blank());
+        const auto* src = static_cast<const float*> (mb.getData());
+        for (int f = 0; f < frames; ++f) std::copy (src + f * zen::tableSize, src + (f + 1) * zen::tableSize, k[(size_t) f].begin());
+        setKeyframes (std::move (k));
+    }
 }
 
 float ZenProcessor::v (const char* id) const
@@ -329,6 +542,7 @@ void ZenProcessor::setCurrentProgram (int index)
 {
     if (! juce::isPositiveAndBelow (index, getNumPrograms())) return;
     currentPreset = index;
+    userPresetName.clear();
 
     auto setParam = [this] (const juce::String& id, float value)
     {
@@ -377,6 +591,14 @@ void ZenProcessor::getStateInformation (juce::MemoryBlock& destData)
     juce::String pads;
     for (int p = 0; p < zen::numPlates; ++p) pads << padNotes[(size_t) p].load() << (p < zen::numPlates - 1 ? "," : "");
     state.setProperty ("padNotes", pads, nullptr);
+    state.setProperty ("userPreset", userPresetName, nullptr);
+
+    const auto k = getKeyframes();
+    juce::MemoryBlock mb;
+    for (auto& c : k) mb.append (c.data(), c.size() * sizeof (float));
+    state.setProperty ("ownFrames", (int) k.size(), nullptr);
+    state.setProperty ("ownWaves", mb.toBase64Encoding(), nullptr);
+
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
 }
@@ -392,7 +614,8 @@ void ZenProcessor::setStateInformation (const void* data, int sizeInBytes)
             auto pads = juce::StringArray::fromTokens (tree.getProperty ("padNotes", "").toString(), ",", "");
             if (pads.size() == zen::numPlates)
                 for (int p = 0; p < zen::numPlates; ++p) padNotes[(size_t) p].store (pads[p].getIntValue());
-            apvts.replaceState (tree);
+            userPresetName = tree.getProperty ("userPreset", "").toString();
+            applyState (tree, true);
         }
 }
 

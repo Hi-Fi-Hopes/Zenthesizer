@@ -2,6 +2,7 @@
 // Build: g++ -std=c++17 -O2 -I../Source tests/dsp_test.cpp -o /tmp/zt && /tmp/zt
 
 #include "dsp/Engine.h"
+#include "dsp/Sandbox.h"
 #include <chrono>
 #include <cstdio>
 #include <random>
@@ -159,6 +160,63 @@ int main()
         const double sec = std::chrono::duration<double> (std::chrono::steady_clock::now() - t0).count();
         std::printf ("      CPU: %.2f s to render 10 s (%.1f%% of one core)\n", sec, sec * 10.0);
         CHECK (sec < 3.0, "CPU budget");
+    }
+
+    // 9. the sandbox: build a table from keyframes and play it
+    {
+        using namespace zen::sandbox;
+        auto t0 = std::chrono::steady_clock::now();
+        std::vector<std::vector<float>> kf { make (Shape::sine), make (Shape::square), make (Shape::noise, 3), make (Shape::organ),
+                                             make (Shape::saw), make (Shape::pulse), make (Shape::bell), make (Shape::hollow) };
+        const UserTable ut = UserTable::build (kf);
+        const double ms = std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now() - t0).count();
+        std::printf ("      user table with 8 keyframes built in %.0f ms\n", ms);
+        CHECK (ut.frames == 8 && ut.data.size() == (size_t) 8 * 8 * tableSize, "user table shape");
+
+        // the square keyframe, full bandwidth, should be close to the drawn square
+        float err = 0.0f;
+        const float* sq = ut.view().frame (1, 0);
+        for (int n = 40; n < tableSize / 2 - 40; ++n) err = std::max (err, std::abs (sq[n] - 1.0f / 1.09f));
+        CHECK (err < 0.2f, "square keyframe survives the band-limit (err %.3f)", err);
+
+        // harmonics round trip
+        auto h = Harmonics::of (kf[3]);
+        auto back = h.toCycle();
+        float rt = 0.0f;
+        for (int n = 0; n < tableSize; ++n) rt = std::max (rt, std::abs (back[(size_t) n] - kf[3][(size_t) n]));
+        CHECK (rt < 0.01f, "harmonics round trip (err %.4f)", rt);
+
+        // import: a Serum-style file of 64 frames -> 8 keyframes; a 600-sample cycle -> 1
+        std::vector<float> wt ((size_t) 64 * 2048);
+        for (size_t i = 0; i < wt.size(); ++i) wt[i] = std::sin (twoPi * (float) (i % 2048) / 2048.0f * (float) (1 + i / 2048 / 8));
+        CHECK (keyframesFromAudio (wt).size() == 8, "64-frame wavetable -> 8 keyframes");
+        std::vector<float> one (600); for (size_t i = 0; i < 600; ++i) one[i] = std::sin (twoPi * (float) i / 600.0f);
+        CHECK (keyframesFromAudio (one).size() == 1, "single cycle -> 1 keyframe");
+        std::vector<float> longAudio (48000); for (size_t i = 0; i < longAudio.size(); ++i) longAudio[i] = std::sin ((float) i * 0.05f) * std::sin ((float) i * 0.0007f);
+        CHECK (keyframesFromAudio (longAudio).size() == 8, "long audio -> 8 slices");
+
+        Run r; r.s.aLevel = 0; r.s.bLevel = 0.9f; r.s.bTable = userTable; r.s.reverbMix = 0; r.s.cutoff = 1.0f;
+        r.eng.setUserTable (&ut);
+        std::vector<MidiEvent> ev;
+        for (int k = 0; k < 6; ++k) ev.push_back (on (k * 4000, 40 + k * 12));
+        r.render (48000, ev);
+        CHECK (finite (r.L) && peak (r.L) < 1.25f && rms (r.L, 4000, 48000) > 0.02f, "plays the user table (rms %.3f)", rms (r.L, 4000, 48000));
+
+        // a sweep of position across 8 keyframes, with a table swap in the middle
+        Run r2; r2.s.aLevel = 0; r2.s.bLevel = 0.9f; r2.s.bTable = userTable; r2.s.reverbMix = 0;
+        r2.eng.setUserTable (&ut);
+        const UserTable ut2 = UserTable::build ({ make (Shape::triangle) });
+        bool ok = true;
+        std::vector<float> l (256), rr (256);
+        for (int b = 0; b < 400; ++b)
+        {
+            r2.s.bPos = (float) b / 399.0f;
+            if (b == 200) r2.eng.setUserTable (&ut2);
+            std::vector<MidiEvent> e2; if (b == 0) e2.push_back (on (0, 57));
+            r2.eng.process (r2.s, e2.data(), (int) e2.size(), l.data(), rr.data(), 256);
+            for (float v : l) if (! std::isfinite (v) || std::abs (v) > 1.25f) ok = false;
+        }
+        CHECK (ok, "position sweep + table swap stays clean");
     }
 
     std::printf (failures == 0 ? "\nALL PASSED\n" : "\n%d FAILED\n", failures);

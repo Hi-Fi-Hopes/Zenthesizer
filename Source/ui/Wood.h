@@ -134,7 +134,7 @@ namespace wood
             for (auto& q : right) p.lineTo (q);
             p.closeSubPath();
         };
-        crack (24.0f, 300.0f, 446.0f, 8.0f);
+        crack (24.0f, 364.0f, 446.0f, 7.0f);   // stops short of the tabs
         crack (133.0f, 348.0f, 446.0f, 6.0f);
         crack (-122.0f, 296.0f, 446.0f, 9.0f);
         return p;

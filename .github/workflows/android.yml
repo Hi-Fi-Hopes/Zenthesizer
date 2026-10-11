@@ -1,0 +1,87 @@
+# Builds the Android app (APK) on GitHub's Linux machines every time code is pushed to main.
+# The finished app is:
+#   1. attached to the run (Actions tab -> the run -> "Artifacts"), and
+#   2. committed to the "android-builds" branch as Zenthesizer-Android.apk
+name: Build Android app
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get JUCE 8.0.15
+        run: git clone --depth 1 --branch 8.0.15 https://github.com/juce-framework/JUCE.git JUCE
+
+      - name: Linux libraries for the Projucer
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q libasound2-dev libcurl4-openssl-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
+            libglu1-mesa-dev mesa-common-dev xvfb
+
+      - name: Build the Projucer
+        run: |
+          cmake -S JUCE -B pj -DJUCE_BUILD_EXTRAS=ON -DCMAKE_BUILD_TYPE=Release > /dev/null
+          cmake --build pj --target Projucer -j4 > pj.log 2>&1 || (tail -60 pj.log; exit 1)
+
+      - name: Write the Android Studio project
+        run: |
+          PJ=$(find pj -type f -name Projucer -perm -u+x | head -1)
+          xvfb-run -a "$PJ" --resave Zenthesizer.jucer
+          ls Builds/Android Builds/Android/app
+
+      - name: Signing key
+        run: cp android/zen.keystore ~/zen.keystore
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: |
+            8
+            17
+
+      - name: Build the APK
+        working-directory: Builds/Android
+        run: |
+          echo "org.gradle.java.installations.fromEnv=JAVA_HOME_8_X64,JAVA_HOME_17_X64" >> gradle.properties
+          echo "org.gradle.jvmargs=-Xmx4g" >> gradle.properties
+          chmod +x gradlew
+          ./gradlew --no-daemon assemble 2>&1 | tail -80
+          find . -name "*.apk" | tee apks.txt
+          test -s apks.txt
+
+      - name: Collect the APK
+        run: |
+          APK=$(find Builds/Android -name "*.apk" | grep -i release | head -1)
+          [ -z "$APK" ] && APK=$(find Builds/Android -name "*.apk" | head -1)
+          cp "$APK" "$RUNNER_TEMP/Zenthesizer-Android.apk"
+          ls -la "$RUNNER_TEMP/Zenthesizer-Android.apk"
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zenthesizer-Android
+          path: ${{ runner.temp }}/Zenthesizer-Android.apk
+
+      - name: Publish to the android-builds branch
+        run: |
+          cp "$RUNNER_TEMP/Zenthesizer-Android.apk" /tmp/
+          git config user.name  "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git switch --orphan android-builds
+          git rm -rfq --cached . > /dev/null 2>&1 || true
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp /tmp/Zenthesizer-Android.apk .
+          echo "Built from $GITHUB_SHA" > BUILD-INFO.txt
+          git add Zenthesizer-Android.apk BUILD-INFO.txt
+          git commit -qm "Android build from $GITHUB_SHA"
+          git push --force origin android-builds

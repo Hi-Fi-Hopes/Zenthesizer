@@ -1,6 +1,10 @@
 #include "PluginEditor.h"
 #include "dsp/Maps.h"
 
+#if JUCE_ANDROID || JUCE_IOS
+ #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
+#endif
+
 namespace
 {
     constexpr float C = 490.0f;
@@ -16,10 +20,10 @@ EngineBox::EngineBox (ZenProcessor& p, bool b) : proc (p), isB (b)
 {
     setPaintingIsUnclipped (true);
     const char* choiceId = isB ? ids::bTable : ids::aWave;
-    const juce::StringArray names = isB ? juce::StringArray { "AIR", "GLASS", "VOX", "REED" } : juce::StringArray { "SAW", "SQR", "TRI", "SIN" };
-    for (int i = 0; i < 4; ++i)
+    const juce::StringArray names = isB ? juce::StringArray { "AIR", "GLASS", "VOX", "REED", "OWN" } : juce::StringArray { "SAW", "SQR", "TRI", "SIN" };
+    for (int i = 0; i < names.size(); ++i)
     {
-        selectors[(size_t) i] = std::make_unique<SteelButton> (names[i], 18.0f);
+        selectors.push_back (std::make_unique<SteelButton> (names[i], 18.0f));
         auto* s = selectors[(size_t) i].get();
         addAndMakeVisible (s);
         s->onClick = [this, choiceId, i]
@@ -51,20 +55,25 @@ void EngineBox::resized()
 {
     screen = { 14.0f, 34.0f, (float) getWidth() - 28.0f, 40.0f };
     const float step = ((float) getWidth() - 20.0f) / 4.0f;
+    const float selStep = ((float) getWidth() - 16.0f) / (float) selectors.size();
+    for (size_t i = 0; i < selectors.size(); ++i)
+        selectors[i]->setBounds ((int) (8.0f + selStep * (float) i), 80, (int) selStep, 46);
     for (int i = 0; i < 4; ++i)
-    {
-        selectors[(size_t) i]->setBounds ((int) (10.0f + step * (float) i), 80, (int) step, 46);
         knobs[(size_t) i]->setBounds ((int) (10.0f + step * (float) i) - 4, 128, (int) step + 8, 64);
-    }
 }
 
 void EngineBox::tick (float dt, bool animate)
 {
     if (animate) phase += dt * 0.35f;
     const int sel = (int) std::lround (proc.apvts.getRawParameterValue (isB ? ids::bTable : ids::aWave)->load());
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < (int) selectors.size(); ++i)
         if (selectors[(size_t) i]->getToggleState() != (i == sel)) selectors[(size_t) i]->setToggleState (i == sel, juce::dontSendNotification);
     repaint (screen.toNearestInt().expanded (6));
+}
+
+void EngineBox::mouseDown (const juce::MouseEvent& e)
+{
+    if (isB && screen.expanded (4.0f).contains (e.position) && onScreenClick) onScreenClick();
 }
 
 void EngineBox::paint (juce::Graphics& g)
@@ -130,8 +139,12 @@ void EngineBox::paintScreenA (juce::Graphics& g, juce::Rectangle<float> r)
 
 void EngineBox::paintScreenB (juce::Graphics& g, juce::Rectangle<float> r)
 {
-    const auto& wt = zen::Wavetables::get();
     const int table = (int) std::lround (proc.apvts.getRawParameterValue (ids::bTable)->load());
+    std::shared_ptr<const zen::UserTable> own;
+    zen::TableView view;
+    if (table == zen::userTable && (own = proc.getUserTable()) != nullptr) view = own->view();
+    else view = zen::Wavetables::get().view (std::min (zen::numTables - 1, table));
+
     float pos = proc.apvts.getRawParameterValue (ids::bPos)->load();
     const float live = proc.display().dstNorm[(int) zen::Dst::bPos].load();
     if (live >= 0.0f) pos = live;
@@ -143,7 +156,7 @@ void EngineBox::paintScreenB (juce::Graphics& g, juce::Rectangle<float> r)
         for (int i = 0; i < n; ++i)
         {
             const float ph = (float) i / (float) (n - 1);
-            const float v = zen::WaveReader::read (wt, table, fp, ph, 1.0f / 256.0f);
+            const float v = zen::WaveReader::read (view, fp, ph, 1.0f / 256.0f);
             const float x = r.getX() + 8.0f + xOff + (r.getWidth() - 30.0f) * ph;
             const float y = r.getCentreY() + yOff - v * amp;
             if (i == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
@@ -152,13 +165,21 @@ void EngineBox::paintScreenB (juce::Graphics& g, juce::Rectangle<float> r)
         g.setColour (col);
         g.strokePath (p, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     };
-    for (int f = 0; f < zen::Wavetables::frames; ++f)
+    const int frames = std::max (1, view.frames);
+    for (int f = 0; f < frames && frames > 1; ++f)
     {
-        const float fp = (float) f / (float) (zen::Wavetables::frames - 1);
+        const float fp = (float) f / (float) (frames - 1);
         const float off = (fp - 0.5f) * 2.0f;
         frameAt (fp, off * 9.0f, (1.0f - fp) * 12.0f, r.getHeight() * 0.22f, theme::glow.withAlpha (0.12f + 0.1f * (1.0f - std::abs (fp - pos) * 2.0f)), 1.0f, false);
     }
-    frameAt (pos, (pos - 0.5f) * 18.0f, (1.0f - pos) * 12.0f, r.getHeight() * 0.3f, theme::glow, 2.0f, true);
+    frameAt (pos, frames > 1 ? (pos - 0.5f) * 18.0f : 0.0f, frames > 1 ? (1.0f - pos) * 12.0f : 6.0f, r.getHeight() * 0.3f, theme::glow, 2.0f, true);
+
+    if (table == zen::userTable)
+    {
+        g.setColour (theme::glow.withAlpha (0.55f));
+        g.setFont (theme::font (theme::FontKind::sans, 8.5f, 0.12f));
+        g.drawText ("TAP TO SCULPT", r.reduced (8.0f, 3.0f), juce::Justification::bottomRight, false);
+    }
 }
 
 //==============================================================================
@@ -220,18 +241,18 @@ void SlotRow::paint (juce::Graphics& g)
 
 //==============================================================================
 Content::Content (ZenProcessor& p)
-    : proc (p), porthole (p.display()), engineA (p, false), engineB (p, true)
+    : proc (p), porthole (p.display()), engineA (p, false), engineB (p, true), wavePanel (p)
 {
     setLookAndFeel (&lnf);
     setOpaque (true);
 
     // ---- tabs, visuals switch, preset arrows --------------------------------------
-    const char* tabNames[] = { "SYNTH", "MOD", "FX", "PLAY", "STAGE" };
-    for (int i = 0; i < 5; ++i)
+    const char* tabNames[] = { "SYNTH", "MOD", "WAVES", "FX", "PLAY", "STAGE" };
+    for (int i = 0; i < numPages; ++i)
     {
         tabs[(size_t) i] = std::make_unique<TabButton> (tabNames[i]);
         addAndMakeVisible (*tabs[(size_t) i]);
-        const float a = -32.0f + 16.0f * (float) i;
+        const float a = -35.0f + 14.0f * (float) i;
         place (*tabs[(size_t) i], pol (334.0f, a), 84.0f, 34.0f, a);
         tabs[(size_t) i]->onClick = [this, i] { showPage (i); };
     }
@@ -240,7 +261,7 @@ Content::Content (ZenProcessor& p)
     {
         visButtons[(size_t) i] = std::make_unique<SteelButton> (visNames[i], 20.0f);
         addAndMakeVisible (*visButtons[(size_t) i]);
-        const float a = 47.0f + 9.0f * (float) i;
+        const float a = 51.0f + 9.0f * (float) i;
         place (*visButtons[(size_t) i], pol (352.0f, a), 48.0f, 54.0f, a, 22.0f);
         visButtons[(size_t) i]->onClick = [this, i] { proc.visualsMode.store (i); };
     }
@@ -435,7 +456,14 @@ Content::Content (ZenProcessor& p)
         pageLabels.push_back ({ play, "to remap: LEARN, click a plate, then hit a pad", { 490, 582 } });
     }
 
-    for (int i = 0; i < 5; ++i) tabs[(size_t) i]->setToggleState (i == 0, juce::dontSendNotification);
+    // ---- WAVES page --------------------------------------------------------------------------
+    addAndMakeVisible (wavePanel);
+    wavePanel.setBounds (250, 240, 480, 336);
+    wavePanel.setHint = [this] (const juce::String& t) { showHint (t); };
+    pageComps[waves].push_back (&wavePanel);
+    engineB.onScreenClick = [this] { showPage (waves); };
+
+    for (int i = 0; i < numPages; ++i) tabs[(size_t) i]->setToggleState (i == 0, juce::dontSendNotification);
     showPage (synth);
     setSize (980, 980);
     lastTick = juce::Time::getMillisecondCounterHiRes();
@@ -523,7 +551,7 @@ void Content::setupSynthPage()
             {
                 slot = proc.findOrMakeSlot ((zen::Src) armedSrc, (zen::Dst) k.dst);
                 startAmt = slot >= 0 ? proc.apvts.getRawParameterValue (ids::slotAmt (slot))->load() : 0.0f;
-                if (slot < 0) hint = "all 12 mod slots are in use - clear one on the MOD page";
+                if (slot < 0) showHint ("all 12 mod slots are in use - clear one on the MOD page");
                 return true;
             }
             if (slot >= 0 && phase == 1)
@@ -547,6 +575,13 @@ void Content::setParam (const juce::String& id, float plainValue)
         prm->setValueNotifyingHost (prm->convertTo0to1 (plainValue));
         prm->endChangeGesture();
     }
+}
+
+void Content::showHint (const juce::String& t)
+{
+    hint = t;
+    hintTime = juce::Time::getMillisecondCounter();
+    repaint (330, 600, 320, 60);
 }
 
 void Content::arm (int src)
@@ -576,7 +611,7 @@ void Content::arm (int src)
 void Content::showPage (int p)
 {
     page = p;
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < numPages; ++i)
     {
         tabs[(size_t) i]->setToggleState (i == p, juce::dontSendNotification);
         for (auto* c : pageComps[i]) c->setVisible (i == p || (i == synth && p == stage && c == &porthole));
@@ -602,18 +637,44 @@ void Content::setRenderScale (float ppu)
     const float want = juce::jlimit (640.0f, 2560.0f, std::round (980.0f * ppu / 64.0f) * 64.0f);
     if (std::abs (want - slabPixels) < 1.0f && slab.isValid()) return;
     slabPixels = want;
+
     static juce::Image cache;   // shared: reopening the editor is instant
     if (cache.isValid() && cache.getWidth() == (int) want) { slab = cache; repaint(); return; }
+
+    // the slab is also kept on disk, so the first open after a restart is quick too
+    // (bump the version when the wood or the lettering changes)
+    const auto file = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+                          .getChildFile ("Zenthesizer").getChildFile ("slab-v3-" + juce::String ((int) want) + ".png");
+    if (file.existsAsFile())
+    {
+        auto img = juce::ImageFileFormat::loadFrom (file);
+        if (img.isValid() && img.getWidth() == (int) want)
+        {
+            slab = cache = img.convertedToFormat (juce::Image::ARGB);
+            repaint();
+            return;
+        }
+    }
+
     slab = wood::render ((int) want);
 
     // static burned lettering, baked into the slab
-    juce::Graphics g (slab);
-    g.addTransform (juce::AffineTransform::scale (want / 980.0f));
-    theme::arcText (g, "zenthesizer", centre, 368.0f, 0.0f, theme::font (theme::FontKind::serif, 44.0f));
-    theme::arcText (g, "TOUCH  SYNTHESIZER", centre, 386.0f, juce::degreesToRadians (-56.0f), theme::font (theme::FontKind::sans, 11.0f, 0.24f));
-    theme::arcText (g, "VISUALS", centre, 392.0f, juce::degreesToRadians (56.0f), theme::font (theme::FontKind::sans, 11.0f, 0.24f));
-    theme::arcText (g, "TIMBRE", centre, 250.0f, juce::MathConstants<float>::pi, theme::font (theme::FontKind::sans, 11.0f, 0.24f), theme::burn, true);
+    {
+        juce::Graphics g (slab);
+        g.addTransform (juce::AffineTransform::scale (want / 980.0f));
+        theme::arcText (g, "zenthesizer", centre, 368.0f, 0.0f, theme::font (theme::FontKind::serif, 44.0f));
+        theme::arcText (g, "TOUCH  SYNTHESIZER", centre, 386.0f, juce::degreesToRadians (-56.0f), theme::font (theme::FontKind::sans, 11.0f, 0.24f));
+        theme::arcText (g, "VISUALS", centre, 392.0f, juce::degreesToRadians (60.0f), theme::font (theme::FontKind::sans, 11.0f, 0.24f));
+        theme::arcText (g, "TIMBRE", centre, 250.0f, juce::MathConstants<float>::pi, theme::font (theme::FontKind::sans, 11.0f, 0.24f), theme::burn, true);
+    }
     cache = slab;
+
+    if (file.getParentDirectory().createDirectory())
+    {
+        file.deleteFile();
+        juce::FileOutputStream os (file);
+        if (os.openedOk()) juce::PNGImageFormat().writeImageToStream (slab, os);
+    }
     repaint();
 }
 
@@ -666,9 +727,7 @@ void Content::paint (juce::Graphics& g)
     const juce::Rectangle<int> presetArea (340, 830, 300, 56);
     if (clip.intersects (presetArea))
     {
-        const auto info = ZenProcessor::presetInfo();
-        const int cur = proc.getCurrentProgram();
-        const auto name = juce::isPositiveAndBelow (cur, (int) info.size()) ? info[(size_t) cur].name : juce::String ("Init");
+        const auto name = proc.currentPresetName();
         theme::arcText (g, name, centre, 374.0f, juce::MathConstants<float>::pi, theme::font (theme::FontKind::serif, 26.0f), theme::burn, true);
     }
 }
@@ -683,27 +742,63 @@ void Content::showPresetMenu()
 {
     juce::PopupMenu menu;
     const auto info = ZenProcessor::presetInfo();
-    std::map<juce::String, juce::PopupMenu> cats;
+    const auto current = proc.currentPresetName();
     juce::StringArray order;
-    for (int i = 0; i < (int) info.size(); ++i)
-    {
-        const auto& c = info[(size_t) i].category;
-        if (! order.contains (c)) order.add (c);
-        cats[c].addItem (i + 1, info[(size_t) i].name, true, i == proc.getCurrentProgram());
-    }
+    for (auto& i : info) if (! order.contains (i.category)) order.add (i.category);
     for (auto& c : order)
     {
-        if (c == "Init") { menu.addItem (1, "Init", true, proc.getCurrentProgram() == 0); continue; }
+        if (c == "Init") { menu.addItem (1, "Init", true, current == "Init"); continue; }
         menu.addSectionHeader (c);
         for (int i = 0; i < (int) info.size(); ++i)
-            if (info[(size_t) i].category == c) menu.addItem (i + 1, info[(size_t) i].name, true, i == proc.getCurrentProgram());
+            if (info[(size_t) i].category == c) menu.addItem (i + 1, info[(size_t) i].name, true, info[(size_t) i].name == current);
     }
+
+    const auto user = ZenProcessor::userPresets();
+    menu.addSectionHeader ("Your presets");
+    juce::PopupMenu del;
+    for (int i = 0; i < user.size(); ++i)
+    {
+        menu.addItem (1000 + i, user[i].getFileNameWithoutExtension(), true, user[i].getFileNameWithoutExtension() == current);
+        del.addItem (2000 + i, user[i].getFileNameWithoutExtension());
+    }
+    menu.addItem (900, "Save current sound as...");
+    if (user.size() > 0) menu.addSubMenu ("Delete one of yours", del);
+
     menu.setLookAndFeel (&lnf);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetHit).withMaximumNumColumns (3),
-                        [safe = juce::Component::SafePointer<Content> (this)] (int r)
+                        [safe = juce::Component::SafePointer<Content> (this), user] (int r)
                         {
-                            if (safe != nullptr && r > 0) { safe->proc.setCurrentProgram (r - 1); safe->repaint(); }
+                            if (safe == nullptr || r <= 0) return;
+                            auto& self = *safe;
+                            if (r == 900) { self.savePresetAs(); return; }
+                            if (r >= 2000)
+                            {
+                                if (juce::isPositiveAndBelow (r - 2000, user.size())) user[r - 2000].deleteFile();
+                                self.showHint ("deleted");
+                                return;
+                            }
+                            if (r >= 1000)
+                            {
+                                if (juce::isPositiveAndBelow (r - 1000, user.size())) self.proc.loadUserPreset (user[r - 1000]);
+                            }
+                            else self.proc.setCurrentProgram (r - 1);
+                            self.repaint();
                         });
+}
+
+void Content::savePresetAs()
+{
+    auto* w = new juce::AlertWindow ("Save preset", "Name this sound (your waves are saved with it):", juce::MessageBoxIconType::NoIcon);
+    w->addTextEditor ("name", proc.currentPresetName() + " 2");
+    w->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    w->enterModalState (true, juce::ModalCallbackFunction::create ([safe = juce::Component::SafePointer<Content> (this), w] (int r)
+    {
+        if (safe == nullptr || r != 1) return;
+        const auto name = w->getTextEditorContents ("name");
+        safe->showHint (safe->proc.saveUserPreset (name) ? "saved " + name.trim() : "couldn't save that preset");
+        safe->repaint (340, 830, 300, 56);
+    }), true);
 }
 
 void Content::stepPreset (int delta)
@@ -814,6 +909,12 @@ void Content::timerCallback()
         }
     }
 
+    if (hint.isNotEmpty() && armedSrc == 0 && hintTime != 0 && juce::Time::getMillisecondCounter() - hintTime > 6000)
+    {
+        hint.clear(); hintTime = 0;
+        repaint (330, 600, 320, 60);
+    }
+
     if (frame % 10 == 0)
     {
         repaint (330, 600, 320, 60);       // readout
@@ -826,16 +927,47 @@ ZenEditor::ZenEditor (ZenProcessor& p) : AudioProcessorEditor (p), content (p)
 {
     addAndMakeVisible (content);
     setResizable (true, true);
+   #if JUCE_ANDROID || JUCE_IOS
+    // the app fills the screen; the slab is centred and the corners hold the device buttons
+    constrainer.setSizeLimits (200, 200, 8000, 8000);
+    for (auto* b : { &midiBtn, &audioBtn })
+    {
+        b->showLed = false;
+        addAndMakeVisible (b);
+    }
+    midiBtn.onClick = []
+    {
+        if (juce::BluetoothMidiDevicePairingDialogue::isAvailable())
+            juce::BluetoothMidiDevicePairingDialogue::open();
+    };
+    audioBtn.onClick = []
+    {
+        if (auto* holder = juce::StandalonePluginHolder::getInstance())
+            holder->showAudioSettingsDialog();
+    };
+   #else
     constrainer.setFixedAspectRatio (1.0);
     constrainer.setSizeLimits (560, 560, 1400, 1400);
+   #endif
     setConstrainer (&constrainer);
     setSize (860, 860);
 }
 
 void ZenEditor::resized()
 {
-    const float scale = (float) getWidth() / (float) designSize;
-    content.setTransform (juce::AffineTransform::scale (scale));
+    const float side = (float) std::min (getWidth(), getHeight());
+    const float scale = side / (float) designSize;
+    const float ox = ((float) getWidth() - side) * 0.5f, oy = ((float) getHeight() - side) * 0.5f;
+    content.setTransform (juce::AffineTransform::scale (scale).translated (ox, oy));
+
+   #if JUCE_ANDROID || JUCE_IOS
+    // the square's top corners are bare table, outside the round slab
+    const int bw = juce::roundToInt (64.0f * std::max (0.75f, scale)), bh = juce::roundToInt (58.0f * std::max (0.75f, scale));
+    midiBtn.dome = audioBtn.dome = 26.0f * std::max (0.75f, scale);
+    midiBtn.setBounds (juce::roundToInt (ox + 14.0f * scale), juce::roundToInt (oy + 14.0f * scale), bw, bh);
+    audioBtn.setBounds (juce::roundToInt (ox + side - 14.0f * scale) - bw, juce::roundToInt (oy + 14.0f * scale), bw, bh);
+   #endif
+
     float physical = 1.0f;
     if (auto* disp = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) physical = (float) disp->scale;
     content.setRenderScale (scale * std::max (1.0f, physical));

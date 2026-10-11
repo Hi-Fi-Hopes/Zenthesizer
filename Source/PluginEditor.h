@@ -4,6 +4,7 @@
 #include "PluginProcessor.h"
 #include "ui/Widgets.h"
 #include "ui/Wood.h"
+#include "ui/WavePanel.h"
 
 //==============================================================================
 // Engine A or B: a carved outline, a little glass screen, four selector buttons and four knobs.
@@ -14,8 +15,10 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void tick (float dt, bool animate);
+    void mouseDown (const juce::MouseEvent&) override;
 
-    std::array<std::unique_ptr<SteelButton>, 4> selectors;
+    std::vector<std::unique_ptr<SteelButton>> selectors;
+    std::function<void()> onScreenClick;
     std::array<std::unique_ptr<WoodKnob>, 4> knobs;
 
 private:
@@ -60,7 +63,7 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
     void setRenderScale (float pixelsPerUnit);
 
-    enum Page { synth = 0, mod, fx, play, stage };
+    enum Page { synth = 0, mod, waves, fx, play, stage, numPages };
     void showPage (int);
 
 private:
@@ -71,6 +74,7 @@ private:
     void arm (int src);
     void updateModRings();
     void showPresetMenu();
+    void savePresetAs();
     void stepPreset (int delta);
     juce::String dstShort (int dst) const;
     void setParam (const juce::String& id, float plainValue);
@@ -88,7 +92,7 @@ private:
     bool learning = false;
 
     // always there
-    std::array<std::unique_ptr<TabButton>, 5> tabs;
+    std::array<std::unique_ptr<TabButton>, numPages> tabs;
     std::array<std::unique_ptr<SteelButton>, 3> visButtons;
     std::array<std::unique_ptr<BrassPlate>, zen::numPlates> plates;
     SteelButton prevBtn { "PREV", 16.0f }, nextBtn { "NEXT", 16.0f };
@@ -123,8 +127,11 @@ private:
 
     struct PageLabel { int page; juce::String text; juce::Point<float> pos; };
     std::vector<PageLabel> pageLabels;
-    std::vector<juce::Component*> pageComps[5];
+    std::vector<juce::Component*> pageComps[numPages];
     juce::String hint;
+    juce::uint32 hintTime = 0;
+    WavePanel wavePanel;
+    void showHint (const juce::String&);
 };
 
 //==============================================================================
@@ -142,4 +149,7 @@ private:
     Content content;
     juce::ComponentBoundsConstrainer constrainer;
     juce::TooltipWindow tooltips { this, 700 };
+   #if JUCE_ANDROID || JUCE_IOS
+    SteelButton midiBtn { "BLUETOOTH", 26.0f }, audioBtn { "AUDIO", 26.0f };
+   #endif
 };

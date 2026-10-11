@@ -4,9 +4,9 @@
 // burned-text tabs and menus, the porthole, and the mod-slot rows.
 
 #include "Theme.h"
-#include "dsp/Engine.h"
-#include "dsp/Voice.h"
-#include "dsp/Wavetables.h"
+#include "../dsp/Engine.h"
+#include "../dsp/Voice.h"
+#include "../dsp/Wavetables.h"
 #include <functional>
 #include <vector>
 
@@ -272,7 +272,7 @@ public:
 
 //==============================================================================
 // Brass touch plate. Click and hold to play; drag up for more pressure.
-class BrassPlate : public juce::Component, public juce::SettableTooltipClient
+class BrassPlate : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
 {
 public:
     BrassPlate (const juce::String& labelText, float diameter) : label (labelText), dia (diameter)
@@ -364,6 +364,7 @@ public:
     void mouseDown (const juce::MouseEvent& e) override
     {
         if (e.mods.isPopupMenu()) { if (onRightClick) onRightClick(); return; }
+        if (onRightClick && e.source.isTouch()) startTimer (650);   // touch: a long press stands in for right-click
         pressed = true; pressure = 0.7f; startY = e.position.y;
         if (onPress) onPress (pressure);
         repaint();
@@ -371,11 +372,13 @@ public:
     void mouseDrag (const juce::MouseEvent& e) override
     {
         if (! pressed) return;
+        if (e.getDistanceFromDragStart() > 8) stopTimer();
         pressure = juce::jlimit (0.05f, 1.0f, 0.7f + (startY - e.position.y) / 120.0f);
         if (onPress) onPress (pressure);
     }
     void mouseUp (const juce::MouseEvent&) override
     {
+        stopTimer();
         if (! pressed) return;
         pressed = false;
         if (onRelease) onRelease();
@@ -383,6 +386,8 @@ public:
     }
 
 private:
+    void timerCallback() override { stopTimer(); if (onRightClick) onRightClick(); }
+
     float level = 0.0f, pressure = 0.0f, startY = 0.0f;
     bool pressed = false;
     std::vector<float> ripples;

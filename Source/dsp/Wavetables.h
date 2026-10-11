@@ -10,6 +10,22 @@
 
 namespace zen
 {
+    constexpr int tableSize = 2048;
+    constexpr int userTable = 4;          // Engine B's fifth table: the player's own (OWN)
+    constexpr int maxKeyframes = 8;
+
+    // A table as the reader sees it: frames x levels single cycles of tableSize samples.
+    struct TableView
+    {
+        const float* data = nullptr;
+        int frames = 1, levels = 8, maxHarm = 128;
+        const float* frame (int fr, int lv) const noexcept
+        {
+            return data + ((size_t) fr * (size_t) levels + (size_t) lv) * (size_t) tableSize;
+        }
+        bool valid() const noexcept { return data != nullptr; }
+    };
+
     struct Wavetables
     {
         static constexpr int size = 2048, mask = size - 1;
@@ -17,8 +33,14 @@ namespace zen
 
         static const char* tableName (int t)
         {
-            static const char* n[] = { "AIR", "GLASS", "VOX", "REED" };
-            return n[std::min (3, std::max (0, t))];
+            static const char* n[] = { "AIR", "GLASS", "VOX", "REED", "OWN" };
+            return n[std::min (4, std::max (0, t))];
+        }
+
+        TableView view (int table) const noexcept
+        {
+            table = std::min (numTables - 1, std::max (0, table));
+            return { data.data() + (size_t) table * frames * levels * size, frames, levels, maxHarm };
         }
 
         static const Wavetables& get()
@@ -130,27 +152,125 @@ namespace zen
     // Reads Engine B: frame morph + linear interpolation, octave-matched band limit.
     struct WaveReader
     {
-        static float read (const Wavetables& w, int table, float pos, float phase, float dt) noexcept
+        static float read (const TableView& t, float pos, float phase, float dt) noexcept
         {
             // Pick the band-limited level: harmonics allowed below ~0.45 * Nyquist-ish.
             const float allowed = 0.45f / std::max (1.0e-6f, dt);
             int lv = 0;
-            while (lv < Wavetables::levels - 1 && (float) (Wavetables::maxHarm >> lv) > allowed) ++lv;
+            while (lv < t.levels - 1 && (float) (t.maxHarm >> lv) > allowed) ++lv;
 
-            const float fpos = clamp01 (pos) * (float) (Wavetables::frames - 1);
-            const int f0 = std::min (Wavetables::frames - 2, (int) fpos);
-            const float ff = fpos - (float) f0;
-
-            const float x = phase * (float) Wavetables::size;
+            const float x = phase * (float) tableSize;
             const int i0 = (int) x;
             const float fx = x - (float) i0;
-            const int a = i0 & Wavetables::mask, b = (i0 + 1) & Wavetables::mask;
+            const int a = i0 & (tableSize - 1), b = (i0 + 1) & (tableSize - 1);
 
-            const float* t0 = w.frame (table, f0, lv);
-            const float* t1 = w.frame (table, f0 + 1, lv);
+            if (t.frames <= 1)
+            {
+                const float* t0 = t.frame (0, lv);
+                return t0[a] + (t0[b] - t0[a]) * fx;
+            }
+            const float fpos = clamp01 (pos) * (float) (t.frames - 1);
+            const int f0 = std::min (t.frames - 2, (int) fpos);
+            const float ff = fpos - (float) f0;
+
+            const float* t0 = t.frame (f0, lv);
+            const float* t1 = t.frame (f0 + 1, lv);
             const float s0 = t0[a] + (t0[b] - t0[a]) * fx;
             const float s1 = t1[a] + (t1[b] - t1[a]) * fx;
             return s0 + (s1 - s0) * ff;
+        }
+
+        static float read (const Wavetables& w, int table, float pos, float phase, float dt) noexcept
+        {
+            return read (w.view (table), pos, phase, dt);
+        }
+    };
+
+    //==========================================================================
+    // The player's own table: 1..8 keyframes (single cycles of tableSize samples, any shape),
+    // turned into 8 band-limited copies per keyframe. Built off the audio thread.
+    struct UserTable
+    {
+        static constexpr int levels = 8, maxHarm = 512;
+        int frames = 1;
+        std::vector<float> data;
+
+        TableView view() const noexcept { return { data.data(), frames, levels, maxHarm }; }
+
+        // Harmonic analysis of one cycle (h = 1..maxHarm): cos and sin parts.
+        static void analyse (const float* x, float* re, float* im)
+        {
+            static const std::vector<float> sinT = []
+            {
+                std::vector<float> v ((size_t) tableSize);
+                for (int i = 0; i < tableSize; ++i) v[(size_t) i] = std::sin (twoPi * (float) i / (float) tableSize);
+                return v;
+            }();
+            const int quarter = tableSize / 4;
+            for (int h = 1; h <= maxHarm; ++h)
+            {
+                double c = 0.0, sn = 0.0;
+                int idx = 0;
+                for (int n = 0; n < tableSize; ++n)
+                {
+                    c  += x[n] * sinT[(size_t) ((idx + quarter) & (tableSize - 1))];
+                    sn += x[n] * sinT[(size_t) idx];
+                    idx = (idx + h) & (tableSize - 1);
+                }
+                re[h] = (float) (2.0 * c / tableSize);
+                im[h] = (float) (2.0 * sn / tableSize);
+            }
+        }
+
+        // Rebuild one cycle from harmonics 1..hmax.
+        static void synth (const float* re, const float* im, int hmax, float* out)
+        {
+            static const std::vector<float> sinT = []
+            {
+                std::vector<float> v ((size_t) tableSize);
+                for (int i = 0; i < tableSize; ++i) v[(size_t) i] = std::sin (twoPi * (float) i / (float) tableSize);
+                return v;
+            }();
+            const int quarter = tableSize / 4;
+            std::fill (out, out + tableSize, 0.0f);
+            for (int h = 1; h <= hmax; ++h)
+            {
+                const float a = re[h], b = im[h];
+                if (std::abs (a) + std::abs (b) < 1.0e-6f) continue;
+                int idx = 0;
+                for (int n = 0; n < tableSize; ++n)
+                {
+                    out[n] += a * sinT[(size_t) ((idx + quarter) & (tableSize - 1))] + b * sinT[(size_t) idx];
+                    idx = (idx + h) & (tableSize - 1);
+                }
+            }
+        }
+
+        static UserTable build (const std::vector<std::vector<float>>& keyframes)
+        {
+            UserTable t;
+            t.frames = std::max (1, std::min (maxKeyframes, (int) keyframes.size()));
+            t.data.assign ((size_t) t.frames * levels * tableSize, 0.0f);
+            std::vector<float> re ((size_t) maxHarm + 1), im ((size_t) maxHarm + 1);
+            for (int f = 0; f < t.frames; ++f)
+            {
+                if (f >= (int) keyframes.size() || (int) keyframes[(size_t) f].size() < tableSize) continue;
+                analyse (keyframes[(size_t) f].data(), re.data(), im.data());
+                float norm = 1.0f;
+                for (int lv = 0; lv < levels; ++lv)
+                {
+                    float* dst = t.data.data() + ((size_t) f * levels + (size_t) lv) * tableSize;
+                    synth (re.data(), im.data(), maxHarm >> lv, dst);
+                    if (lv == 0)
+                    {
+                        float peak = 0.0f;
+                        for (int n = 0; n < tableSize; ++n) peak = std::max (peak, std::abs (dst[n]));
+                        norm = peak > 1.0e-5f ? 1.0f / peak : 0.0f;
+                    }
+                    for (int n = 0; n < tableSize; ++n) dst[n] *= norm;
+                }
+            }
+            return t;
         }
     };
 }

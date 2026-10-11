@@ -43,7 +43,7 @@ namespace zen
     enum class LfoShape : int { sine = 0, triangle, saw, square, drift };
     enum class ArpMode : int { up = 0, down, upDown, random, played };
 
-    constexpr int numTables = 4;
+    constexpr int numTables = 4;          // built-in tables (AIR, GLASS, VOX, REED); 4 = the user's own
     constexpr int numScales = 11;
     constexpr int numPlates = 16;   // 12 note plates + 4 timbre plates (A-D)
     constexpr int numNotePlates = 12;

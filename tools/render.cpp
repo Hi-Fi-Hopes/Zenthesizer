@@ -51,14 +51,32 @@ int main()
         proc.processBlock (buf, midi);
     }
 
+    // app icon: the slab with a burned "z" and a brass ring
+    {
+        auto icon = wood::render (512);
+        juce::Graphics g (icon);
+        g.addTransform (juce::AffineTransform::scale (512.0f / 980.0f));
+        const juce::Point<float> c (490.0f, 490.0f);
+        juce::ColourGradient brass (theme::brassHi, c.x - 90.0f, c.y - 120.0f, theme::brassDk, c.x + 200.0f, c.y + 200.0f, true);
+        brass.addColour (0.4, theme::brass); brass.addColour (0.75, theme::brassLo);
+        g.setGradientFill (brass);
+        g.drawEllipse (c.x - 250.0f, c.y - 250.0f, 500.0f, 500.0f, 34.0f);
+        theme::burnText (g, "z", { c.x - 300.0f, c.y - 330.0f, 600.0f, 600.0f }, juce::Justification::centred,
+                         theme::font (theme::FontKind::serif, 520.0f));
+        juce::File f ("/tmp/zen_icon.png");
+        f.deleteFile();
+        juce::FileOutputStream os (f);
+        juce::PNGImageFormat().writeImageToStream (icon, os);
+    }
+
     const double t0 = juce::Time::getMillisecondCounterHiRes();
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     ed->setSize (980, 980);
     std::printf ("editor + slab at 980 px: %.0f ms\n", juce::Time::getMillisecondCounterHiRes() - t0);
     auto* zen = dynamic_cast<ZenEditor*> (ed.get());
 
-    const char* names[] = { "synth", "mod", "fx", "play", "stage" };
-    for (int p = 0; p < 5; ++p)
+    const char* names[] = { "synth", "mod", "waves", "fx", "play", "stage" };
+    for (int p = 0; p < 6; ++p)
     {
         zen->getContent().showPage (p);
         for (int k = 0; k < 6; ++k)
@@ -67,6 +85,17 @@ int main()
             proc.processBlock (buf, midi);
             juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
         }
+        if (p == 2)   // also show the harmonics view
+        {
+            std::function<juce::Component* (juce::Component&)> find = [&] (juce::Component& c) -> juce::Component*
+            {
+                if (c.getComponentID() == "harmTab") return &c;
+                for (auto* ch : c.getChildren()) if (auto* f = find (*ch)) return f;
+                return nullptr;
+            };
+            if (auto* tab = dynamic_cast<juce::Button*> (find (zen->getContent()))) tab->triggerClick();
+        }
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (80);
         auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
         juce::File f ("/tmp/zen_" + juce::String (names[p]) + ".png");
         f.deleteFile();

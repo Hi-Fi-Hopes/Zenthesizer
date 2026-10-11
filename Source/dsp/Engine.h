@@ -72,6 +72,10 @@ namespace zen
             sustainPedal = false;
         }
 
+        // The user's own table (Engine B, table 4). The pointer must stay valid for a while after
+        // it's replaced: the owner retires old tables with a grace period, never immediately.
+        void setUserTable (const UserTable* t) noexcept { userTablePtr.store (t); }
+
         // UI: press/release a plate with the mouse (pressure 0..1, or < 0 for released).
         void setUiPlate (int plate, float pressure) noexcept
         {
@@ -81,6 +85,7 @@ namespace zen
         void process (const Settings& s, const MidiEvent* ev, int numEv, float* outL, float* outR, int n)
         {
             set = &s;
+            userNow = userTablePtr.load();
             pollUiPlates();
             int e = 0;
             for (int start = 0; start < n; start += chunk)
@@ -132,6 +137,8 @@ namespace zen
         struct Held { int id; float pitch; float vel; };
 
         const Settings* set = nullptr;
+        std::atomic<const UserTable*> userTablePtr { nullptr };
+        const UserTable* userNow = nullptr;
         float fs = 48000.0f;
         std::array<Voice, maxVoices> voices {};
         std::array<PlateState, numPlates> plates {};
@@ -566,8 +573,9 @@ namespace zen
             }
             bNorm = 1.0f / std::sqrt (bNorm);
             const float warpK = 0.5f - 0.45f * bWarp;
-            const auto& tables = Wavetables::get();
-            const int table = std::min (numTables - 1, std::max (0, s.bTable));
+            const int tableIndex = std::min (userTable, std::max (0, s.bTable));
+            const TableView tview = (tableIndex == userTable && userNow != nullptr) ? userNow->view()
+                                                                                     : Wavetables::get().view (std::min (numTables - 1, tableIndex));
 
             const float k = res * 3.95f;
             const float driveGain = 1.0f + 6.0f * drive;
@@ -609,7 +617,7 @@ namespace zen
                     if (bG > 0.0001f && gB[q] > 0.0f)
                     {
                         const float pw = ph < warpK ? 0.5f * ph / warpK : 0.5f + 0.5f * (ph - warpK) / (1.0f - warpK);
-                        const float w = WaveReader::read (tables, table, bPos, pw, dtB[q] * 0.5f / warpK) * gB[q];
+                        const float w = WaveReader::read (tview, bPos, pw, dtB[q] * 0.5f / warpK) * gB[q];
                         bL += w * (1.0f - bPanK[q] * s.spread * 0.8f);
                         bR += w * (1.0f + bPanK[q] * s.spread * 0.8f);
                     }
