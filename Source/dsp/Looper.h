@@ -4,7 +4,7 @@
 // so switching presets doesn't change the loop: loop a pad, change patch, play a lead over it.
 //
 //   LOOP:  empty -> record -> play -> overdub -> play -> overdub ...   (stopped -> play)
-//   STOP:  recording -> closes the loop and stops;  playing / overdubbing -> stops
+//   STOP:  recording -> closes the loop and stops;  playing / overdubbing -> stops;  stopped -> erases it
 //   UNDO:  takes back the last overdub;  CLEAR: empties it
 
 #include "Common.h"
@@ -135,6 +135,7 @@ namespace zen
         {
             if (state == recording) closeLoop (stopped);
             else if (state == playing || state == overdubbing) state = stopped;
+            else if (state == stopped) { state = empty; len = 0; pos = 0; hasUndo = false; }   // second STOP: erase
         }
 
         void startOverdub() noexcept

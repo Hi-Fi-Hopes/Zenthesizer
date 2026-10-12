@@ -289,16 +289,23 @@ Content::Content (ZenProcessor& p)
         loopStopBtn.setTriggeredOnMouseDown (true);
         loopStopBtn.showLed = false;
         loopBtn.onClick = [this] { proc.looper().requestLoop(); };
-        loopStopBtn.onClick = [this] { proc.looper().requestStop(); };
-        loopUndoBtn.onHold = [this] { proc.looper().requestClear(); showHint ("loop cleared"); };
+        loopStopBtn.onClick = [this]
+        {
+            const int st = proc.looper().displayState.load();
+            proc.looper().requestStop();
+            if (st == zen::Looper::stopped) showHint ("loop erased  -  tap LOOP to record a new one");
+            else if (st != zen::Looper::empty) showHint ("stopped  -  LOOP plays it again, STOP again erases it");
+        };
+        loopUndoBtn.onHold = [this] { proc.looper().requestClear(); showHint ("loop erased  -  tap LOOP to record a new one"); };
         loopUndoBtn.onClick = [this]
         {
             if (loopUndoBtn.consumeHold()) return;
             if (proc.looper().displayCanUndo.load()) { proc.looper().requestUndo(); showHint ("last overdub undone"); }
-            else showHint ("nothing to undo  -  hold UNDO to clear the loop");
+            else showHint ("nothing more to undo  -  tap STOP twice to erase the whole loop");
         };
         loopBtn.setTooltip ("LOOP: record, then play, then overdub. Records what you hear, so you can change presets and play over it.");
-        loopUndoBtn.setTooltip ("Tap: undo the last overdub. Hold: clear the loop.");
+        loopUndoBtn.setTooltip ("Tap: undo the last overdub. Hold: erase the loop (or tap STOP twice).");
+        loopStopBtn.setTooltip ("Stop the loop. Tap again while stopped to erase it.");
 
         addAndMakeVisible (loopLevelKnob);
         place (loopLevelKnob, pol (386.0f, 237.0f), 70.0f, 66.0f, 0.0f, 23.0f);

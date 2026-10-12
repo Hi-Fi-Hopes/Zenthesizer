@@ -254,6 +254,10 @@ int main()
         r.eng.looper.requestStop();
         r.L.clear(); r.render (9600);
         CHECK (rms (r.L, 4800, 9600) < 1.0e-3f, "stop silences the loop");
+        r.eng.looper.requestStop();      // second STOP erases
+        r.render (512);
+        CHECK (r.eng.looper.getState() == Looper::empty, "STOP twice erases it");
+        r.eng.looper.requestLoop(); r.render (4800); r.eng.looper.requestLoop(); r.render (512);
         r.eng.looper.requestClear();
         r.render (512);
         CHECK (r.eng.looper.getState() == Looper::empty, "clear empties it");
