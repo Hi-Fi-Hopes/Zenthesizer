@@ -325,6 +325,30 @@ int main()
         CHECK (f.eng.looper.getState() == Looper::recording, "without drums, recording starts at once");
     }
 
+    // 14. pitch bend: MIDI and the on-screen strip, with the bend range
+    {
+        auto pitchOf = [] (std::vector<float>& x, size_t a, size_t b)   // zero-crossing frequency
+        {
+            int zc = 0; for (size_t i = a + 1; i < b; ++i) if (x[i - 1] <= 0.0f && x[i] > 0.0f) ++zc;
+            return (float) zc * 48000.0f / (float) (b - a);
+        };
+        Run r; r.s.reverbMix = 0; r.s.aWave = WaveA::sine; r.s.aDetune = 0; r.s.cutoff = 1.0f; r.s.bendRange = 12.0f;
+        r.render (24000, { on (0, 57) });                                          // A3 = 220 Hz
+        const float f0 = pitchOf (r.L, 4000, 24000);
+        r.eng.setUiBend (1.0f); r.L.clear(); r.render (24000);
+        const float fUp = pitchOf (r.L, 4000, 24000);
+        r.eng.setUiBend (0.0f);
+        r.L.clear(); r.render (24000, { { 0, 0xE0, 0, 0 } });                       // MIDI bend fully down
+        const float fDown = pitchOf (r.L, 4000, 24000);
+        std::printf ("      bend range 12: centre %.0f Hz, strip up %.0f Hz, MIDI down %.0f Hz\n", f0, fUp, fDown);
+        CHECK (std::abs (fUp / f0 - 2.0f) < 0.05f && std::abs (fDown / f0 - 0.5f) < 0.03f, "bend reaches an octave each way at range 12");
+
+        r.eng.setUiWheel (0.7f); r.render (512);
+        CHECK (std::abs (r.eng.display.src[(int) Src::wheel].load() - 0.7f) < 0.01f, "mod strip sets the wheel");
+        r.render (512, { { 0, 0xB0, 1, 0 } });                                     // the keyboard's wheel takes over
+        CHECK (r.eng.display.src[(int) Src::wheel].load() < 0.01f, "MIDI mod wheel takes over again");
+    }
+
     std::printf (failures == 0 ? "\nALL PASSED\n" : "\n%d FAILED\n", failures);
     return failures == 0 ? 0 : 1;
 }

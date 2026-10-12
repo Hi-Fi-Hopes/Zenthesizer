@@ -35,6 +35,14 @@ Built with JUCE. GitHub builds the Windows `.vst3` on every push to `main`.
   If your pads send other notes: PLAY tab, LEARN, click a plate, hit a pad.
 - You can also click the plates; drag up while holding for more pressure.
 
+## Pitch and mod
+
+Two curved strips along the slab's edges, on every page: **PITCH** (left) bends and springs back
+to the middle when you let go; **MOD** (right) works like a mod wheel and stays where you leave it.
+They follow your keyboard's pitch and mod wheels too (whichever moved last wins for mod).
+The bend range (1 to 24 semitones, default 2) is on the PLAY page and applies to both.
+In the presets the mod wheel opens the filter; assign it elsewhere with the WHEEL source.
+
 ## Quick modulation
 
 Click a mod source (ENV1, LFO1, PRESS...) on the SYNTH page, or right-click a timbre plate.

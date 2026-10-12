@@ -706,3 +706,152 @@ public:
                          theme::font (theme::FontKind::sans, 10.0f, 0.08f));
     }
 };
+
+//==============================================================================
+// A curved touch strip carved along the edge of the slab: PITCH (springs back to the middle)
+// or MOD (stays where you leave it). Angles are degrees clockwise from the top of the slab;
+// angleBottom is the end nearest the player.
+class ArcStrip : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    ArcStrip (juce::String name, bool springs, juce::Point<float> slabCentre, float radius, float angleBottom, float angleTop)
+        : label (std::move (name)), spring (springs), centre (slabCentre), r (radius), aBottom (angleBottom), aTop (angleTop)
+    {
+        setPaintingIsUnclipped (true);
+        // the component covers the band's bounding box (in the parent's coordinates)
+        juce::Rectangle<float> box;
+        for (int i = 0; i <= 16; ++i)
+        {
+            const float a = aBottom + (aTop - aBottom) * (float) i / 16.0f;
+            for (float rr : { r - 30.0f, r + 18.0f })
+                box = box.getUnion (juce::Rectangle<float> (theme::polar (centre, rr, a), theme::polar (centre, rr, a)).expanded (1.0f));
+        }
+        box = box.expanded (4.0f, 26.0f);
+        setBounds (box.getSmallestIntegerContainer());
+    }
+
+    std::function<void (float)> onChange;   // pitch: -1..1, mod: 0..1
+
+    // value shown (follows the keyboard too); pitch -1..1, mod 0..1
+    void setShown (float v)
+    {
+        if (dragging || springing) return;
+        if (std::abs (v - shown) > 0.004f) { shown = v; repaint(); }
+    }
+
+    // call ~60 times a second: lets the pitch strip glide back to the middle
+    void tick (float dt)
+    {
+        if (! springing) return;
+        shown *= std::exp (-dt / 0.03f);
+        if (std::abs (shown) < 0.003f) { shown = 0.0f; springing = false; }
+        if (onChange) onChange (shown);
+        repaint();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto c = centre - getPosition().toFloat();
+        const float a0 = juce::degreesToRadians (aBottom), a1 = juce::degreesToRadians (aTop);
+
+        // the carved groove
+        juce::Path groove;
+        groove.addCentredArc (c.x, c.y, r, r, 0.0f, std::min (a0, a1), std::max (a0, a1), true);
+        g.setColour (juce::Colour (0x40ffecc8));
+        g.strokePath (groove, juce::PathStrokeType (15.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded),
+                      juce::AffineTransform::translation (0.0f, 1.0f));
+        g.setColour (juce::Colour (0x9c2a1608));
+        g.strokePath (groove, juce::PathStrokeType (12.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        // tick marks: middle (pitch) or quarters (mod)
+        for (int i = 0; i <= 4; ++i)
+        {
+            if (spring && i != 2) continue;
+            const float a = aBottom + (aTop - aBottom) * (float) i / 4.0f;
+            const auto p0 = theme::polar (c, r - 11.0f, a), p1 = theme::polar (c, r - 16.0f, a);
+            g.setColour (theme::burn.withAlpha (spring ? 0.8f : 0.45f));
+            g.drawLine (p0.x, p0.y, p1.x, p1.y, spring ? 2.0f : 1.2f);
+        }
+
+        // lit part: from the middle (pitch) or the bottom (mod) to the bead
+        const float t = spring ? 0.5f + 0.5f * shown : shown;
+        const float aBead = aBottom + (aTop - aBottom) * t;
+        const float aFrom = spring ? (aBottom + aTop) * 0.5f : aBottom;
+        if (std::abs (aBead - aFrom) > 0.2f)
+        {
+            juce::Path lit;
+            const float x0 = juce::degreesToRadians (std::min (aFrom, aBead)), x1 = juce::degreesToRadians (std::max (aFrom, aBead));
+            lit.addCentredArc (c.x, c.y, r, r, 0.0f, x0, x1, true);
+            g.setColour (theme::amber.withAlpha (0.85f));
+            g.strokePath (lit, juce::PathStrokeType (4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+
+        // the brass bead
+        const auto b = theme::polar (c, r, aBead);
+        if (dragging)
+        {
+            g.setColour (juce::Colour (0xffffc86e).withAlpha (0.45f));
+            g.fillEllipse (b.x - 15.0f, b.y - 15.0f, 30.0f, 30.0f);
+        }
+        juce::ColourGradient brass (theme::brassHi, b.x - 3.0f, b.y - 4.0f, theme::brassDk, b.x + 8.0f, b.y + 8.0f, true);
+        brass.addColour (0.4, theme::brass);
+        g.setGradientFill (brass);
+        g.fillEllipse (b.x - 9.0f, b.y - 9.0f, 18.0f, 18.0f);
+        g.setColour (juce::Colour (0x8c281608));
+        g.drawEllipse (b.x - 9.0f, b.y - 9.0f, 18.0f, 18.0f, 1.0f);
+
+        // name, just past the bottom end
+        const auto lp = theme::polar (c, r - 4.0f, aBottom + (aBottom > 180.0f ? -6.5f : 6.5f));
+        theme::burnText (g, label, juce::Rectangle<float> (60.0f, 14.0f).withCentre (lp), juce::Justification::centred,
+                         theme::font (theme::FontKind::sansBold, 10.0f, 0.16f));
+    }
+
+    bool hitTest (int x, int y) override
+    {
+        const auto p = juce::Point<float> ((float) x, (float) y) + getPosition().toFloat();
+        const float d = p.getDistanceFrom (centre);
+        if (d < r - 28.0f || d > r + 18.0f) return false;
+        const float a = angleOf (p);
+        return a >= std::min (aBottom, aTop) - 3.0f && a <= std::max (aBottom, aTop) + 3.0f;
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (WoodTouch::claims (e)) return;
+        dragging = true; springing = false;
+        update (e);
+    }
+    void mouseDrag (const juce::MouseEvent& e) override { if (dragging) update (e); }
+    void mouseUp (const juce::MouseEvent&) override
+    {
+        if (! dragging) return;
+        dragging = false;
+        if (spring) springing = true;   // glide back to the middle
+        repaint();
+    }
+
+private:
+    juce::String label;
+    bool spring;
+    juce::Point<float> centre;
+    float r, aBottom, aTop;
+    float shown = 0.0f;
+    bool dragging = false, springing = false;
+
+    float angleOf (juce::Point<float> p) const
+    {
+        float a = juce::radiansToDegrees (std::atan2 (p.x - centre.x, centre.y - p.y));
+        if (a < 0.0f) a += 360.0f;
+        return a;
+    }
+
+    void update (const juce::MouseEvent& e)
+    {
+        const auto p = e.position + getPosition().toFloat();
+        const float t = juce::jlimit (0.0f, 1.0f, (angleOf (p) - aBottom) / (aTop - aBottom));
+        shown = spring ? t * 2.0f - 1.0f : t;
+        if (spring && std::abs (shown) < 0.04f) shown = 0.0f;   // a little dead zone in the middle
+        if (onChange) onChange (shown);
+        repaint();
+    }
+};

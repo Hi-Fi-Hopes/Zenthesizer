@@ -96,6 +96,7 @@ namespace zen
         float arpGate = 0.6f;
         bool arpHold = false;
 
+        float bendRange = 2.0f;   // semitones, for MIDI pitch bend and the on-screen strip
         float loopLevel = 0.8f;   // the looper's playback level
         DrumSettings drums;
 

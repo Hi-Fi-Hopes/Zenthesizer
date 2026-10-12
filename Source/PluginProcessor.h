@@ -53,6 +53,7 @@ namespace ids
     inline constexpr const char* arpOn = "arpOn"; inline constexpr const char* arpMode = "arpMode";
     inline constexpr const char* arpRate = "arpRate"; inline constexpr const char* arpOctaves = "arpOctaves";
     inline constexpr const char* arpGate = "arpGate"; inline constexpr const char* arpHold = "arpHold";
+    inline constexpr const char* bendRange = "bendRange";
 
     inline juce::String slotSrc (int i) { return "slot" + juce::String (i + 1) + "Src"; }
     inline juce::String slotDst (int i) { return "slot" + juce::String (i + 1) + "Dst"; }
@@ -116,6 +117,10 @@ public:
     void setDrumStep (int drum, int step, int value);
     void loadGroove (int index);
     void hitDrum (int drum)                     { engine.drums.requestHit (drum); }
+
+    // On-screen pitch (-1..1) and mod (0..1) strips
+    void setUiBend (float b)                    { engine.setUiBend (b); }
+    void setUiWheel (float w)                   { engine.setUiWheel (w); }
     float hostTempo() const                     { return hostBpm.load(); }
 
     // The looper (after the whole synth, so preset changes don't touch it)

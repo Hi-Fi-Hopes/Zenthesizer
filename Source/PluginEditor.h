@@ -102,6 +102,9 @@ private:
     SteelButton prevBtn { "PREV", 16.0f }, nextBtn { "NEXT", 16.0f };
     SteelButton loopBtn { "LOOP", 22.0f }, loopStopBtn { "STOP", 22.0f }, loopUndoBtn { "UNDO", 22.0f };
     WoodKnob loopLevelKnob { "LOOP LVL", 32.0f };
+    ArcStrip pitchStrip { "PITCH", true,  { 490.0f, 490.0f }, 395.0f, 254.0f, 286.0f };
+    ArcStrip modStrip   { "MOD",   false, { 490.0f, 490.0f }, 395.0f, 106.0f, 74.0f };
+    juce::ComboBox bendBox;
     juce::Component presetHit;
 
     // SYNTH page

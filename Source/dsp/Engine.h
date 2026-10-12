@@ -40,6 +40,7 @@ namespace zen
         std::atomic<int> inCount { 0 }, inNote { -1 }, inChannel { 0 };   // last incoming note-on (for pad learn)
         std::atomic<float> cutoffHzNow { 1000.0f };
         std::atomic<int> drumStep { -1 }, drumKicks { 0 }, drumHits { 0 };
+        std::atomic<float> bendNow { 0.0f };   // -1..1, MIDI + screen
         std::atomic<int> activeVoices { 0 };
     };
 
@@ -82,6 +83,10 @@ namespace zen
         // it's replaced: the owner retires old tables with a grace period, never immediately.
         void setUserTable (const UserTable* t) noexcept { userTablePtr.store (t); }
 
+        // UI: the on-screen pitch strip (-1..1, springs back) and mod strip (0..1, stays put)
+        void setUiBend (float b) noexcept  { uiBend.store (juce_clampBend (b)); }
+        void setUiWheel (float w) noexcept { uiWheel.store (clamp01 (w)); uiWheelSeq.fetch_add (1); }
+
         // UI: press/release a plate with the mouse (pressure 0..1, or < 0 for released).
         void setUiPlate (int plate, float pressure) noexcept
         {
@@ -92,6 +97,7 @@ namespace zen
         {
             set = &s;
             userNow = userTablePtr.load();
+            if (const int seq = uiWheelSeq.load(); seq != uiWheelSeen) { uiWheelSeen = seq; wheel = uiWheel.load(); }   // last touched wins
             pollUiPlates();
             int e = 0;
             for (int start = 0; start < n; start += chunk)
@@ -179,7 +185,13 @@ namespace zen
         std::array<float, numPlates> uiLast {};
         uint32_t serial = 1;
 
-        float wheel = 0.0f, chanAT = 0.0f, bend = 0.0f;
+        float wheel = 0.0f, chanAT = 0.0f, bend = 0.0f;   // bend: -1..1 from MIDI
+        std::atomic<float> uiBend { 0.0f };               // -1..1 from the on-screen strip
+        std::atomic<float> uiWheel { 0.0f };
+        std::atomic<int> uiWheelSeq { 0 };
+        int uiWheelSeen = 0;
+        static float juce_clampBend (float b) noexcept { return std::min (1.0f, std::max (-1.0f, b)); }
+        float bendSemis() const noexcept { return juce_clampBend (bend + uiBend.load (std::memory_order_relaxed)) * set->bendRange; }
         bool sustainPedal = false;
 
         // modulators
@@ -239,7 +251,7 @@ namespace zen
                 else setPressure (keyId (ch, m.d1), v);
             }
             else if (type == 0xD0) chanAT = m.d1 / 127.0f;
-            else if (type == 0xE0) bend = ((float) ((m.d2 << 7) | m.d1) - 8192.0f) / 8192.0f * 2.0f;
+            else if (type == 0xE0) bend = juce_clampBend (((float) ((m.d2 << 7) | m.d1) - 8192.0f) / 8192.0f);
             else if (type == 0xB0)
             {
                 if (m.d1 == 1) wheel = m.d2 / 127.0f;
@@ -573,7 +585,7 @@ namespace zen
             if (gs <= 0.0f) v.pitch = v.note;
             else v.pitch += (v.note - v.pitch) * (1.0f - std::exp (-(float) n / (gs * 0.4f * fs)));
 
-            const float pitchOffs = m[(int) Dst::pitch] * 12.0f + bend;
+            const float pitchOffs = m[(int) Dst::pitch] * 12.0f + bendSemis();
             const float semisA = v.pitch + pitchOffs + tuneSemisSnapped (s.aTune) + m[(int) Dst::aTune] * 24.0f;
             const float semisB = v.pitch + pitchOffs;
             const float hzA = 440.0f * std::pow (2.0f, (semisA - 69.0f) / 12.0f);
@@ -751,6 +763,7 @@ namespace zen
             for (int d = 0; d < numDst; ++d) display.dstNorm[(size_t) d].store (nv != nullptr ? lastDst[(size_t) d] : -1.0f, std::memory_order_relaxed);
             display.cutoffHzNow.store (lastCutHz, std::memory_order_relaxed);
             display.drumStep.store (drums.currentStep, std::memory_order_relaxed);
+            display.bendNow.store (juce_clampBend (bend + uiBend.load()), std::memory_order_relaxed);
             display.drumKicks.store (drums.kickCount, std::memory_order_relaxed);
             display.drumHits.store (drums.hitCount, std::memory_order_relaxed);
         }

@@ -159,6 +159,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ZenProcessor::createLayout()
     choice (ids::arpOctaves, "Arp Octaves", { "1", "2", "3", "4" }, 0);
     knob (ids::arpGate, "Arp Gate", d.arpGate);
     toggle (ids::arpHold, "Arp Hold", false);
+    choice (ids::bendRange, "Bend Range", { "1", "2", "3", "4", "5", "7", "12", "24" }, 1);
 
     return layout;
 }
@@ -401,7 +402,7 @@ bool ZenProcessor::loadUserPreset (const juce::File& f)
 // Applies a saved state. includePlaySettings = false keeps your scale, pads, etc. (loading a preset).
 void ZenProcessor::applyState (const juce::ValueTree& tree, bool includePlaySettings)
 {
-    static const juce::StringArray playIds { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre };
+    static const juce::StringArray playIds { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre, ids::bendRange };
     if (includePlaySettings)
     {
         apvts.replaceState (tree);
@@ -486,6 +487,10 @@ zen::Settings ZenProcessor::readSettings() const
     for (int p = 0; p < zen::numPlates; ++p) s.padNotes[(size_t) p] = padNotes[(size_t) p].load();
     s.arpOn = bv (ids::arpOn); s.arpMode = (zen::ArpMode) juce::jlimit (0, 4, iv (ids::arpMode));
     s.arpRate = iv (ids::arpRate); s.arpOctaves = iv (ids::arpOctaves) + 1; s.arpGate = v (ids::arpGate); s.arpHold = bv (ids::arpHold);
+    {
+        static const float ranges[] = { 1, 2, 3, 4, 5, 7, 12, 24 };
+        s.bendRange = ranges[juce::jlimit (0, 7, iv (ids::bendRange))];
+    }
     s.loopLevel = loopLevel.load();
     s.bpm = hostBpm.load();
     s.hostPpq = hostPpq.load();
@@ -611,7 +616,7 @@ void ZenProcessor::setCurrentProgram (int index)
     };
 
     // Defaults first. Play settings (scale, root, octave, pads) are the player's, so they stay.
-    static const juce::StringArray keep { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre };
+    static const juce::StringArray keep { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre, ids::bendRange };
     for (auto* param : getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (param))
         {

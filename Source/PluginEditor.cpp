@@ -309,6 +309,14 @@ Content::Content (ZenProcessor& p)
         loopLevelKnob.onValueChange = [this] { proc.loopLevel.store ((float) loopLevelKnob.getValue()); };
     }
 
+    // ---- PITCH and MOD strips along the slab's edges (on every page)
+    addAndMakeVisible (pitchStrip);
+    addAndMakeVisible (modStrip);
+    pitchStrip.onChange = [this] (float v) { proc.setUiBend (v); };
+    modStrip.onChange   = [this] (float v) { proc.setUiWheel (v); };
+    pitchStrip.setTooltip ("Pitch bend: slide up or down, it springs back when you let go. Range is on the PLAY page.");
+    modStrip.setTooltip ("Mod wheel: slide to set, it stays. Your keyboard's mod wheel moves it too.");
+
     addAndMakeVisible (presetHit);
     presetHit.setBounds (390, 838, 200, 40);
     presetHit.addMouseListener (this, false);
@@ -483,10 +491,12 @@ Content::Content (ZenProcessor& p)
             repaint (330, 600, 320, 60);
         };
         resetPadsBtn.onClick = [this] { proc.resetPadNotes(); };
+        combo (bendBox, { "bend 1", "bend 2", "bend 3", "bend 4", "bend 5", "bend 7", "bend 12", "bend 24" }, ids::bendRange, { 664, 490, 84, 24 });
 
         pageLabels.push_back ({ play, "NOTE PLATES", { 443, 252 } });
         pageLabels.push_back ({ play, "ARPEGGIATOR", { 470, 350 } });
         pageLabels.push_back ({ play, "LAUNCHKEY PADS", { 470, 460 } });
+        pageLabels.push_back ({ play, "PITCH BEND RANGE", { 706, 524 } });
         pageLabels.push_back ({ play, "default: pads C1-B1 play plates 1-12, C2-D#2 play A-D", { 490, 562 } });
         pageLabels.push_back ({ play, "to remap: LEARN, click a plate, then hit a pad", { 490, 582 } });
     }
@@ -569,8 +579,8 @@ void Content::setupSynthPage()
     }
 
     addAndMakeVisible (engineA); addAndMakeVisible (engineB);
-    engineA.setBounds (110, 390, 195, 200);
-    engineB.setBounds (675, 390, 195, 200);
+    engineA.setBounds (120, 390, 185, 200);   // leaves room for the PITCH and MOD strips at the edges
+    engineB.setBounds (675, 390, 185, 200);
     pageComps[synth].push_back (&engineA);
     pageComps[synth].push_back (&engineB);
 
@@ -964,6 +974,10 @@ void Content::timerCallback()
     }
 
     const auto& d = proc.display();
+
+    pitchStrip.tick (dt);
+    pitchStrip.setShown (d.bendNow.load());
+    modStrip.setShown (d.src[(int) zen::Src::wheel].load());
 
     // looper lights: red recording, amber overdubbing, green playing; the ring is the loop's position
     {
