@@ -243,19 +243,19 @@ void SlotRow::paint (juce::Graphics& g)
 
 //==============================================================================
 Content::Content (ZenProcessor& p)
-    : proc (p), porthole (p.display()), engineA (p, false), engineB (p, true), wavePanel (p)
+    : proc (p), porthole (p.display()), engineA (p, false), engineB (p, true), wavePanel (p), beatPanel (p)
 {
     setLookAndFeel (&lnf);
     setOpaque (true);
 
     // ---- tabs, visuals switch, preset arrows --------------------------------------
-    const char* tabNames[] = { "SYNTH", "MOD", "WAVES", "FX", "PLAY", "STAGE" };
+    const char* tabNames[] = { "SYNTH", "MOD", "WAVES", "BEAT", "FX", "PLAY", "STAGE" };
     for (int i = 0; i < numPages; ++i)
     {
         tabs[(size_t) i] = std::make_unique<TabButton> (tabNames[i]);
         addAndMakeVisible (*tabs[(size_t) i]);
-        const float a = -35.0f + 14.0f * (float) i;
-        place (*tabs[(size_t) i], pol (334.0f, a), 84.0f, 34.0f, a);
+        const float a = -37.5f + 12.5f * (float) i;
+        place (*tabs[(size_t) i], pol (334.0f, a), 70.0f, 34.0f, a);
         tabs[(size_t) i]->onClick = [this, i] { showPage (i); };
     }
     const char* visNames[] = { "OFF", "LOW", "FULL" };
@@ -496,6 +496,12 @@ Content::Content (ZenProcessor& p)
     wavePanel.setBounds (250, 240, 480, 336);
     wavePanel.setHint = [this] (const juce::String& t) { showHint (t); };
     pageComps[waves].push_back (&wavePanel);
+
+    // ---- BEAT page ---------------------------------------------------------------------------
+    addAndMakeVisible (beatPanel);
+    beatPanel.setBounds (196, 240, 588, 340);
+    beatPanel.setHint = [this] (const juce::String& t) { showHint (t); };
+    pageComps[beat].push_back (&beatPanel);
     engineB.onScreenClick = [this] { showPage (waves); };
 
     for (int i = 0; i < numPages; ++i) tabs[(size_t) i]->setToggleState (i == 0, juce::dontSendNotification);
@@ -964,13 +970,14 @@ void Content::timerCallback()
         auto& lp = proc.looper();
         const int st = lp.displayState.load();
         const float pos = lp.displayPos.load();
-        const juce::Colour col = st == zen::Looper::recording ? theme::red
+        const juce::Colour col = (st == zen::Looper::recording || st == zen::Looper::closing || st == zen::Looper::armed) ? theme::red
                                : st == zen::Looper::overdubbing ? theme::amber
                                : st == zen::Looper::playing ? theme::green : theme::ledOff;
-        const bool blink = st == zen::Looper::recording && std::fmod (now * 0.001, 0.5) < 0.25;
+        const bool blink = (st == zen::Looper::recording && std::fmod (now * 0.001, 0.5) < 0.25)
+                        || ((st == zen::Looper::armed || st == zen::Looper::closing) && std::fmod (now * 0.001, 0.25) < 0.125);   // waiting for the bar
         loopBtn.ledColour = col;
         loopBtn.setLedLevel (st == zen::Looper::empty || st == zen::Looper::stopped ? 0.0f : (blink ? 0.5f : 1.0f));
-        loopBtn.setRing (st == zen::Looper::empty ? -1.0f : (st == zen::Looper::stopped ? 0.0f : pos),
+        loopBtn.setRing ((st == zen::Looper::empty || st == zen::Looper::armed) ? -1.0f : (st == zen::Looper::stopped ? 0.0f : pos),
                          st == zen::Looper::stopped ? theme::ledOff : col);
         loopUndoBtn.ledColour = theme::amber;
         loopUndoBtn.setLedLevel (lp.displayCanUndo.load() ? 0.6f : 0.0f);

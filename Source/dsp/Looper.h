@@ -16,7 +16,9 @@ namespace zen
     class Looper
     {
     public:
-        enum State { empty = 0, recording, playing, overdubbing, stopped };
+        enum State { empty = 0, recording, playing, overdubbing, stopped,
+                     armed,      // drums running: waiting for the next bar line to start recording
+                     closing };  // drums running: recording until the next bar line, then playing
 
         void prepare (float sampleRate, float maxSeconds = 45.0f)
         {
@@ -45,20 +47,34 @@ namespace zen
         std::atomic<bool> displayCanUndo { false };
 
         // In-place: records io (when recording/overdubbing) and adds the loop to it.
-        void process (float* L, float* R, int n, float level) noexcept
+        // barOffsets: where bar lines fall in this block when the drums are running (synced), so
+        // recording starts and stops on the beat and every loop is a whole number of bars.
+        void process (float* L, float* R, int n, float level,
+                      const int* barOffsets = nullptr, int numBarOffsets = 0, bool synced = false) noexcept
         {
+            sync = synced;
             handleRequests();
+            if (! synced && state == armed)   { state = recording; pos = 0; }
+            if (! synced && state == closing) closeLoop (playing);
             if (bufL.empty()) return;
             gain.setTime (0.01f * fs);
             gain.target = (state == playing || state == overdubbing || state == recording) ? clamp01 (level) : 0.0f;
-            if (state == recording) gain.target = 0.0f;   // nothing to play back yet
+            if (state == recording || state == closing || state == armed) gain.target = 0.0f;   // nothing to play back yet
 
+            int nextBar = 0;
             for (int i = 0; i < n; ++i)
             {
+                if (nextBar < numBarOffsets && barOffsets[nextBar] == i)
+                {
+                    ++nextBar;
+                    if (state == armed)        { state = recording; pos = 0; }
+                    else if (state == closing) closeLoop (playing);
+                }
                 const float g = gain.next();
                 const float inL = L[i], inR = R[i];
                 switch (state)
                 {
+                    case closing:
                     case recording:
                         bufL[(size_t) pos] = inL; bufR[(size_t) pos] = inR;
                         if (++pos >= maxLen) closeLoop (playing);
@@ -88,14 +104,14 @@ namespace zen
                         }
                         break;
 
-                    case empty: default: break;
+                    case armed: case empty: default: break;
                 }
             }
 
             displayState.store ((int) state, std::memory_order_relaxed);
-            displayPos.store (state == recording ? (float) pos / (float) maxLen
+            displayPos.store ((state == recording || state == closing) ? (float) pos / (float) maxLen
                                                  : (len > 0 ? (float) pos / (float) len : 0.0f), std::memory_order_relaxed);
-            displaySeconds.store ((float) (state == recording ? pos : len) / fs, std::memory_order_relaxed);
+            displaySeconds.store ((float) ((state == recording || state == closing) ? pos : len) / fs, std::memory_order_relaxed);
             displayCanUndo.store (hasUndo, std::memory_order_relaxed);
         }
 
@@ -106,7 +122,7 @@ namespace zen
         std::vector<float> bufL, bufR, undoL, undoR;
         float fs = 48000.0f;
         int maxLen = 1, len = 0, pos = 0, fadeLen = 256, touched = 0;
-        bool hasUndo = false;
+        bool hasUndo = false, sync = false;
         State state = empty;
         Smoother gain;
         std::atomic<int> reqLoop { 0 }, reqStop { 0 }, reqUndo { 0 }, reqClear { 0 };
@@ -123,8 +139,10 @@ namespace zen
         {
             switch (state)
             {
-                case empty:       state = recording; pos = 0; len = 0; hasUndo = false; break;
-                case recording:   closeLoop (playing); break;
+                case empty:       state = sync ? armed : recording; pos = 0; len = 0; hasUndo = false; break;
+                case armed:       state = empty; break;                        // changed your mind
+                case recording:   if (sync) state = closing; else closeLoop (playing); break;
+                case closing:     break;
                 case playing:     startOverdub(); break;
                 case overdubbing: state = playing; break;
                 case stopped:     state = playing; pos = 0; gain.snap (0.0f); break;
@@ -133,7 +151,8 @@ namespace zen
 
         void pressStop() noexcept
         {
-            if (state == recording) closeLoop (stopped);
+            if (state == recording || state == closing) closeLoop (stopped);
+            else if (state == armed) state = empty;
             else if (state == playing || state == overdubbing) state = stopped;
         }
 

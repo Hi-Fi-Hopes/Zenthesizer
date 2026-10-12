@@ -5,6 +5,7 @@
 #include "ui/Widgets.h"
 #include "ui/Wood.h"
 #include "ui/WavePanel.h"
+#include "ui/BeatPanel.h"
 #include <map>
 #include <set>
 
@@ -65,7 +66,7 @@ public:
     void mouseDown (const juce::MouseEvent&) override;
     void setRenderScale (float pixelsPerUnit);
 
-    enum Page { synth = 0, mod, waves, fx, play, stage, numPages };
+    enum Page { synth = 0, mod, waves, beat, fx, play, stage, numPages };
     void showPage (int);
     void showHint (const juce::String&);
 
@@ -136,6 +137,7 @@ private:
     juce::String hint;
     juce::uint32 hintTime = 0;
     WavePanel wavePanel;
+    BeatPanel beatPanel;
     int renderGeneration = 0;
     void finishSlab (juce::Image, int pixels);
 };

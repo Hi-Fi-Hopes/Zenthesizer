@@ -110,9 +110,18 @@ public:
     void setPadNote (int plate, int note);
     void resetPadNotes();
 
+    // The BEAT section (drums + pattern). Lives with the session, not the synth presets.
+    zen::DrumSettings getDrums() const;
+    void setDrums (const zen::DrumSettings&);
+    void setDrumStep (int drum, int step, int value);
+    void loadGroove (int index);
+    void hitDrum (int drum)                     { engine.drums.requestHit (drum); }
+    float hostTempo() const                     { return hostBpm.load(); }
+
     // The looper (after the whole synth, so preset changes don't touch it)
     zen::Looper& looper()                       { return engine.looper; }
     std::atomic<float> loopLevel { 0.8f };
+    std::atomic<double> hostPpq { -1.0 };
 
     // Visuals: 0 = off, 1 = low, 2 = full (saved with the session, not automatable)
     std::atomic<int> visualsMode { 2 };
@@ -169,6 +178,11 @@ private:
     void publishTable (zen::UserTable);
     void applyState (const juce::ValueTree&, bool includePlaySettings);
     juce::String userPresetName;
+    mutable std::mutex drumLock;
+    zen::DrumSettings drumSettings;              // written by the UI (under drumLock), copied per block
+    std::atomic<int> drumVersion { 0 };
+    zen::DrumSettings drumsForAudio;
+    int drumAudioVersion = -1;
     std::array<std::atomic<int>, zen::numPlates> padNotes {};
     int currentPreset = 0;
     std::map<std::string, std::atomic<float>*> raw;

@@ -75,8 +75,9 @@ int main()
     std::printf ("editor + slab at 980 px: %.0f ms\n", juce::Time::getMillisecondCounterHiRes() - t0);
     auto* zen = dynamic_cast<ZenEditor*> (ed.get());
 
-    const char* names[] = { "synth", "mod", "waves", "fx", "play", "stage" };
-    for (int p = 0; p < 6; ++p)
+    const char* names[] = { "synth", "mod", "waves", "beat", "fx", "play", "stage" };
+    { auto d = proc.getDrums(); d.playing = true; proc.setDrums (d); }
+    for (int p = 0; p < 7; ++p)
     {
         zen->getContent().showPage (p);
         for (int k = 0; k < 6; ++k)

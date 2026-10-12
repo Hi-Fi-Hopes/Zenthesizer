@@ -483,6 +483,13 @@ public:
             if (lv > 0.001f) b.pitch = pitch;
         }
 
+        // the kick drum breathes out from the centre
+        if (const int kicks = disp.drumKicks.load(); kicks != lastKicks)
+        {
+            if (lastKicks >= 0) ripples.push_back ({ { 0.0f, 0.0f }, 0.0f, 0.55f });
+            lastKicks = kicks;
+        }
+
         const int count = disp.noteOnCount.load();
         if (count != lastCount)
         {
@@ -573,7 +580,7 @@ private:
     std::vector<Ripple> ripples;
     Ambient ambient[3];
     float time = 0.0f, rotation = 0.0f;
-    int lastCount = 0, visMode = 2;
+    int lastCount = 0, visMode = 2, lastKicks = -1;
     bool frozen = false;
 
     // unit-circle position for a pitch: pitch class sets the angle, octave the distance

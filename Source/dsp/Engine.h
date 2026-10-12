@@ -39,6 +39,7 @@ namespace zen
         std::atomic<float> lastPitch { 60.0f }, lastVel { 0.0f };
         std::atomic<int> inCount { 0 }, inNote { -1 }, inChannel { 0 };   // last incoming note-on (for pad learn)
         std::atomic<float> cutoffHzNow { 1000.0f };
+        std::atomic<int> drumStep { -1 }, drumKicks { 0 }, drumHits { 0 };
         std::atomic<int> activeVoices { 0 };
     };
 
@@ -59,6 +60,8 @@ namespace zen
             fs = (float) sampleRate;
             chorus.prepare (fs); delay.prepare (fs); reverb.prepare (fs);
             looper.prepare (fs);
+            drums.prepare (fs);
+            drumL.assign (4096, 0.0f); drumR.assign (4096, 0.0f);
             for (auto& v : voices) { v.active = false; v.amp.reset(); v.noiseHP.setCutoff (300.0f, fs); v.noiseLP.setCutoff (7000.0f, fs); }
             bufL.assign (4096, 0.0f); bufR.assign (4096, 0.0f);
             drift1.prepare (fs / (float) chunk, 1.0f, 11u);
@@ -119,12 +122,18 @@ namespace zen
                     L[i] = softClip (L[i] * vol);
                     R[i] = softClip (R[i] * vol);
                 }
+                // the drums: own clock (or the host's), bar lines for the looper
+                int bars[DrumMachine::maxBars]; int numBars = 0;
+                const float drumBpm = s.bpm > 1.0f ? s.bpm : s.drums.tempo;
+                const double ppq = s.hostPpq >= 0.0 ? s.hostPpq + (double) start * drumBpm / 60.0 / fs : -1.0;
+                drums.process (s.drums, drumBpm, ppq, drumL.data(), drumR.data(), len, bars, numBars);
+
                 // the looper records what you hear and plays it back on top, untouched by preset changes
-                looper.process (L, R, len, s.loopLevel);
+                looper.process (L, R, len, s.loopLevel, bars, numBars, s.drums.playing);
                 for (int i = 0; i < len; ++i)
                 {
-                    L[i] = softClip (L[i]);
-                    R[i] = softClip (R[i]);
+                    L[i] = softClip (L[i] + drumL[(size_t) i]);
+                    R[i] = softClip (R[i] + drumR[(size_t) i]);
                     const int w = scopeW;
                     display.scope[(size_t) w].store (0.5f * (L[i] + R[i]), std::memory_order_relaxed);
                     scopeW = (w + 1) & (Display::scopeSize - 1);
@@ -137,6 +146,7 @@ namespace zen
 
         Display display;
         Looper looper;
+        DrumMachine drums;
 
     private:
         //======================================================================
@@ -188,7 +198,7 @@ namespace zen
         int arpStep = 0;
 
         Chorus chorus; PingPong delay; Reverb reverb;
-        std::vector<float> bufL, bufR;
+        std::vector<float> bufL, bufR, drumL, drumR;
         int scopeW = 0;
 
         //======================================================================
@@ -740,6 +750,9 @@ namespace zen
             }
             for (int d = 0; d < numDst; ++d) display.dstNorm[(size_t) d].store (nv != nullptr ? lastDst[(size_t) d] : -1.0f, std::memory_order_relaxed);
             display.cutoffHzNow.store (lastCutHz, std::memory_order_relaxed);
+            display.drumStep.store (drums.currentStep, std::memory_order_relaxed);
+            display.drumKicks.store (drums.kickCount, std::memory_order_relaxed);
+            display.drumHits.store (drums.hitCount, std::memory_order_relaxed);
         }
     };
 }

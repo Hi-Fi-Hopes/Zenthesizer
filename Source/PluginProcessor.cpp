@@ -234,7 +234,47 @@ ZenProcessor::ZenProcessor()
     }
     builder = std::make_unique<TableBuilder> (*this);
 
+    zen::applyGroove (drumSettings, zen::grooves()[1]);   // a groove ready to go (not playing)
+    drumSettings.playing = false;
+    ++drumVersion;
+
     setCurrentProgram (1);   // open on the first real preset
+}
+
+//==============================================================================
+zen::DrumSettings ZenProcessor::getDrums() const
+{
+    const std::lock_guard<std::mutex> l (drumLock);
+    return drumSettings;
+}
+
+void ZenProcessor::setDrums (const zen::DrumSettings& d)
+{
+    {
+        const std::lock_guard<std::mutex> l (drumLock);
+        drumSettings = d;
+    }
+    ++drumVersion;
+}
+
+void ZenProcessor::setDrumStep (int drum, int step, int value)
+{
+    if (! juce::isPositiveAndBelow (drum, zen::numDrums) || ! juce::isPositiveAndBelow (step, zen::numSteps)) return;
+    {
+        const std::lock_guard<std::mutex> l (drumLock);
+        drumSettings.steps[(size_t) drum][(size_t) step] = (uint8_t) juce::jlimit (0, 2, value);
+    }
+    ++drumVersion;
+}
+
+void ZenProcessor::loadGroove (int index)
+{
+    if (! juce::isPositiveAndBelow (index, (int) zen::grooves().size())) return;
+    {
+        const std::lock_guard<std::mutex> l (drumLock);
+        zen::applyGroove (drumSettings, zen::grooves()[(size_t) index]);
+    }
+    ++drumVersion;
 }
 
 //==============================================================================
@@ -448,6 +488,16 @@ zen::Settings ZenProcessor::readSettings() const
     s.arpRate = iv (ids::arpRate); s.arpOctaves = iv (ids::arpOctaves) + 1; s.arpGate = v (ids::arpGate); s.arpHold = bv (ids::arpHold);
     s.loopLevel = loopLevel.load();
     s.bpm = hostBpm.load();
+    s.hostPpq = hostPpq.load();
+
+    // the drum pattern: copy it only when the UI changed it (try_lock: never wait on the audio thread)
+    auto* self = const_cast<ZenProcessor*> (this);
+    if (drumVersion.load() != drumAudioVersion)
+    {
+        std::unique_lock<std::mutex> l (drumLock, std::try_to_lock);
+        if (l.owns_lock()) { self->drumsForAudio = drumSettings; self->drumAudioVersion = drumVersion.load(); }
+    }
+    s.drums = drumsForAudio;
     return s;
 }
 
@@ -455,10 +505,15 @@ void ZenProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuf
 {
     juce::ScopedNoDenormals noDenormals;
 
+    double ppqNow = -1.0;
     if (auto* ph = getPlayHead())
         if (auto pos = ph->getPosition())
-            if (auto bpm = pos->getBpm())
-                hostBpm.store ((float) *bpm);
+        {
+            if (auto bpm = pos->getBpm()) hostBpm.store ((float) *bpm);
+            if (pos->getIsPlaying())
+                if (auto ppq = pos->getPpqPosition()) ppqNow = *ppq;
+        }
+    hostPpq.store (ppqNow);
 
     events.clear();
     for (const auto meta : midi)
@@ -594,6 +649,20 @@ void ZenProcessor::getStateInformation (juce::MemoryBlock& destData)
     state.setProperty ("padNotes", pads, nullptr);
     state.setProperty ("userPreset", userPresetName, nullptr);
     state.setProperty ("loopLevel", loopLevel.load(), nullptr);
+    {
+        const auto d = getDrums();
+        auto join = [] (const std::array<float, zen::numDrums>& a)
+        {
+            juce::StringArray sa; for (float v : a) sa.add (juce::String (v, 4)); return sa.joinIntoString (",");
+        };
+        state.setProperty ("drumPattern", juce::String (zen::patternToString (d)), nullptr);
+        state.setProperty ("drumTempo", d.tempo, nullptr);
+        state.setProperty ("drumSwing", d.swing, nullptr);
+        state.setProperty ("drumVolume", d.volume, nullptr);
+        state.setProperty ("drumLevel", join (d.level), nullptr);
+        state.setProperty ("drumTune", join (d.tune), nullptr);
+        state.setProperty ("drumDecay", join (d.decay), nullptr);
+    }
 
     const auto k = getKeyframes();
     juce::MemoryBlock mb;
@@ -618,6 +687,22 @@ void ZenProcessor::setStateInformation (const void* data, int sizeInBytes)
                 for (int p = 0; p < zen::numPlates; ++p) padNotes[(size_t) p].store (pads[p].getIntValue());
             userPresetName = tree.getProperty ("userPreset", "").toString();
             loopLevel.store ((float) (double) tree.getProperty ("loopLevel", 0.8));
+            if (tree.hasProperty ("drumPattern"))
+            {
+                auto d = getDrums();
+                zen::patternFromString (d, tree.getProperty ("drumPattern").toString().toStdString());
+                d.tempo  = (float) (double) tree.getProperty ("drumTempo", 90.0);
+                d.swing  = (float) (double) tree.getProperty ("drumSwing", 0.0);
+                d.volume = (float) (double) tree.getProperty ("drumVolume", 0.6);
+                auto split = [&tree] (const char* id, std::array<float, zen::numDrums>& a)
+                {
+                    auto sa = juce::StringArray::fromTokens (tree.getProperty (id).toString(), ",", "");
+                    if (sa.size() == zen::numDrums) for (int i = 0; i < zen::numDrums; ++i) a[(size_t) i] = sa[i].getFloatValue();
+                };
+                split ("drumLevel", d.level); split ("drumTune", d.tune); split ("drumDecay", d.decay);
+                d.playing = false;   // a reopened session starts quiet
+                setDrums (d);
+            }
             applyState (tree, true);
         }
 }

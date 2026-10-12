@@ -277,6 +277,54 @@ int main()
         CHECK (A() < 0.05f && ! r.eng.display.plateLocked[12].load(), "double tap again unlocks (%.2f)", A());
     }
 
+    // 12. drums: every groove plays, sane levels; a four-on-the-floor at 120 hits 8 kicks in 4 s
+    {
+        for (auto& g : grooves())
+        {
+            Run r; r.s.reverbMix = 0; applyGroove (r.s.drums, g); r.s.drums.playing = true;
+            r.s.drums.tune = { 0.2f, 0.8f, 0.3f, 0.9f, 0.1f, 0.7f, 0.4f, 1.0f };
+            r.render (48000 * 4);
+            const float lv = rms (r.L, 0, r.L.size());
+            if (std::string (g.name) != "Empty")
+                CHECK (finite (r.L) && peak (r.L) <= 1.25f && lv > 0.01f && lv < 0.4f, "groove %-18s rms %.3f peak %.2f", g.name, lv, peak (r.L));
+        }
+        Run r; r.s.reverbMix = 0; r.s.drums.playing = true; r.s.drums.tempo = 120;
+        for (int k = 0; k < 16; k += 4) r.s.drums.steps[0][(size_t) k] = 2;
+        r.render (48000 * 4);
+        CHECK (r.eng.display.drumKicks.load() == 8, "4/4 kick at 120 bpm: 8 kicks in 4 s (%d)", r.eng.display.drumKicks.load());
+
+        // swing pushes the off-beat 16ths later: hat on every 16th at 120 bpm, swing 1
+        Run sw; sw.s.reverbMix = 0; sw.s.drums.playing = true; sw.s.drums.tempo = 120; sw.s.drums.swing = 1.0f;
+        sw.s.drums.steps[4] = {}; sw.s.drums.steps[4][1] = 2;   // only the 2nd 16th
+        sw.render (12000);
+        int first = -1; for (size_t i = 0; i < sw.L.size(); ++i) if (std::abs (sw.L[i]) > 0.01f) { first = (int) i; break; }
+        CHECK (first > 6000 + 1700 && first < 6000 + 2300, "swing delays the off-beat (hit at %d, straight would be 6000)", first);
+    }
+
+    // 13. looper locked to the drums: recording waits for the bar, loops are whole bars
+    {
+        Run r; r.s.reverbMix = 0; r.s.drums.playing = true; r.s.drums.tempo = 120;   // a bar = 2 s = 96000 samples
+        r.s.drums.steps[0][0] = 2;
+        r.render (10000);
+        r.eng.looper.requestLoop();                                // pressed mid-bar
+        r.render (20000, { on (0, 60) });
+        CHECK (r.eng.looper.getState() == Looper::armed, "LOOP waits for the next bar (armed)");
+        r.render (80000);                                          // crosses the bar line at 96000
+        CHECK (r.eng.looper.getState() == Looper::recording, "recording started on the bar");
+        r.render (60000);
+        r.eng.looper.requestLoop();                                // pressed before the next bar (192000)
+        r.render (512);
+        CHECK (r.eng.looper.getState() == Looper::closing, "closing waits for the bar line");
+        r.render (40000);
+        CHECK (r.eng.looper.getState() == Looper::playing, "loop closed on the bar");
+        CHECK (r.eng.looper.length() == 96000, "loop is exactly one bar (%d samples)", r.eng.looper.length());
+
+        // drums stopped: the looper goes back to instant behaviour
+        Run f; f.s.drums.playing = false;
+        f.eng.looper.requestLoop(); f.render (512);
+        CHECK (f.eng.looper.getState() == Looper::recording, "without drums, recording starts at once");
+    }
+
     std::printf (failures == 0 ? "\nALL PASSED\n" : "\n%d FAILED\n", failures);
     return failures == 0 ? 0 : 1;
 }

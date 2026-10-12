@@ -4,6 +4,7 @@
 // Knob-style values are 0..1 exactly as the knobs show them; the engine maps them to Hz, seconds, etc.
 
 #include <array>
+#include "Drums.h"
 
 namespace zen
 {
@@ -96,8 +97,10 @@ namespace zen
         bool arpHold = false;
 
         float loopLevel = 0.8f;   // the looper's playback level
+        DrumSettings drums;
 
-        float bpm = 0.0f;   // host tempo, 0 if unknown
+        float bpm = 0.0f;         // host tempo, 0 if unknown
+        double hostPpq = -1.0;    // host position in beats while the host is playing, else -1
     };
 
     // Launchkey drum-mode style default: 16 pads send notes 36..51.

@@ -4,7 +4,7 @@
      GitHub Actions turns this into an Android Studio project with the Projucer, then builds the APK.
      JUCE is cloned into ./JUCE by the workflow. -->
 <JUCERPROJECT id="ZnTh01" name="Zenthesizer" projectType="audioplug" useAppConfig="0"
-              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="1.1.0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="1.2.0"
               companyName="DIY Audio" bundleIdentifier="com.diyaudio.zenthesizer"
               pluginFormats="buildStandalone" pluginCharacteristicsValue="pluginIsSynth,pluginWantsMidiIn"
               pluginName="Zenthesizer" pluginDesc="Organic touch synthesizer" pluginManufacturer="DIY Audio"
@@ -26,12 +26,15 @@
         <FILE id="ZnDs06" name="Settings.h" compile="0" resource="0" file="Source/dsp/Settings.h"/>
         <FILE id="ZnDs07" name="Voice.h" compile="0" resource="0" file="Source/dsp/Voice.h"/>
         <FILE id="ZnDs08" name="Wavetables.h" compile="0" resource="0" file="Source/dsp/Wavetables.h"/>
+        <FILE id="ZnDs09" name="Looper.h" compile="0" resource="0" file="Source/dsp/Looper.h"/>
+        <FILE id="ZnDs10" name="Drums.h" compile="0" resource="0" file="Source/dsp/Drums.h"/>
       </GROUP>
       <GROUP id="ZnTh05" name="ui">
         <FILE id="ZnUi01" name="Theme.h" compile="0" resource="0" file="Source/ui/Theme.h"/>
         <FILE id="ZnUi02" name="WavePanel.h" compile="0" resource="0" file="Source/ui/WavePanel.h"/>
         <FILE id="ZnUi03" name="Widgets.h" compile="0" resource="0" file="Source/ui/Widgets.h"/>
         <FILE id="ZnUi04" name="Wood.h" compile="0" resource="0" file="Source/ui/Wood.h"/>
+        <FILE id="ZnUi05" name="BeatPanel.h" compile="0" resource="0" file="Source/ui/BeatPanel.h"/>
       </GROUP>
     </GROUP>
     <GROUP id="ZnTh06" name="Resources">

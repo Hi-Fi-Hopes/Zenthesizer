@@ -21,6 +21,7 @@ Built with JUCE. GitHub builds the Windows `.vst3` on every push to `main`.
 | SYNTH | the slab: engines, filter/amp ring, mod sources, the porthole |
 | MOD | Env 1/2, LFO 1/2, Random, key tracking, velocity, the 12 mod slots |
 | WAVES | the wavetable sandbox for Engine B's OWN table |
+| BEAT | organic drum kit and 16-step pattern, grooves, tempo, swing |
 | FX | chorus, echo, shimmer reverb, air, glide, spread, volume |
 | PLAY | root, scale, octave for the note plates; arpeggiator; Launchkey pads and Learn |
 | STAGE | the porthole, large, for playing |
@@ -51,6 +52,20 @@ so you can loop a pad, switch presets and play a lead over it.
 - **STOP:** stops (LOOP plays it again from the start). Pressed while recording, it closes the loop stopped.
 - **UNDO:** tap to take back the last overdub, hold to clear the loop.
 - **LOOP LVL** (bottom left): playback level. Loops last up to 45 s and aren't saved with the set.
+- With the BEAT drums running, recording starts and stops on bar lines (see BEAT).
+
+## BEAT: percussion
+
+Eight synthesized voices (kick, frame drum, wood block, shaker, hat, low and high hand drums, bell)
+and a 16-step pattern. Tap a step: off -> on -> accent -> off; drag along a row to paint.
+Tap a drum's name to select it (and hear it); LEVEL / TUNE / DECAY shape the selected drum.
+GROOVES loads one of 15 ready-made patterns. In Ableton the drums follow Ableton's tempo and,
+while Ableton plays, its position; in the app TEMPO sets the speed.
+
+The drums are separate from the presets (changing sound doesn't change the beat) and play after
+the looper, so loops don't record them. **While the drums run, the looper locks to the bar:**
+LOOP waits for the next bar line to start recording (light blinks), and a second LOOP keeps
+recording to the next bar line, so every loop is a whole number of bars and stays in time.
 
 ## Locking a timbre plate
 
