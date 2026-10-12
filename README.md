@@ -48,9 +48,8 @@ so you can loop a pad, switch presets and play a lead over it.
 
 - **LOOP:** first tap records, next tap closes the loop and plays, then taps toggle overdub / play.
   Light: red recording, amber overdubbing, green playing; the ring shows where the loop is.
-- **STOP:** stops (LOOP plays it again from the start). **Tap STOP again while stopped to erase the loop.**
-  Pressed while recording, it closes the loop stopped.
-- **UNDO:** tap to take back the last overdub (one level), hold to erase the loop.
+- **STOP:** stops (LOOP plays it again from the start). Pressed while recording, it closes the loop stopped.
+- **UNDO:** tap to take back the last overdub, hold to clear the loop.
 - **LOOP LVL** (bottom left): playback level. Loops last up to 45 s and aren't saved with the set.
 
 ## Locking a timbre plate
