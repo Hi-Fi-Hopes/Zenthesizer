@@ -23,6 +23,66 @@ namespace zen
         return n[std::min (numDrums - 1, std::max (0, d))];
     }
 
+    //==========================================================================
+    // The sound library: any row can play any of these (or a captured synth patch).
+    enum class Sound : int
+    {
+        kick = 0, frame, wood, shaker, hat, lowDrum, highDrum, bell,
+        deepBoom, feltThump, subPulse, brush, clap, snap, rim, clave, logDrum, cajon,
+        tambourine, cabasa, vinylTick, tabla, udu, conga, triangle, kalimba, glassDrop, raindrop, gong,
+        count,
+        patch = 100   // a captured synth patch (see DrumSample)
+    };
+    constexpr int numSounds = (int) Sound::count;
+
+    inline const char* soundName (int s)
+    {
+        static const char* n[] = { "KICK", "FRAME DRUM", "WOOD BLOCK", "SHAKER", "HAT", "LOW DRUM", "HIGH DRUM", "BELL",
+                                   "DEEP BOOM", "FELT THUMP", "SUB PULSE", "BRUSH", "CLAP", "SNAP", "RIM", "CLAVE", "LOG DRUM", "CAJON",
+                                   "TAMBOURINE", "CABASA", "VINYL TICK", "TABLA", "UDU", "CONGA", "TRIANGLE", "KALIMBA", "GLASS DROP",
+                                   "RAINDROP", "GONG" };
+        if (s == (int) Sound::patch) return "PATCH";
+        return n[std::min (numSounds - 1, std::max (0, s))];
+    }
+
+    // Menu groups: name, then the sounds in it
+    struct SoundGroup { const char* name; std::vector<int> sounds; };
+    inline const std::vector<SoundGroup>& soundGroups()
+    {
+        using S = Sound;
+        static const std::vector<SoundGroup> g = {
+            { "Kicks",          { (int) S::kick, (int) S::deepBoom, (int) S::feltThump, (int) S::subPulse } },
+            { "Snares & claps", { (int) S::frame, (int) S::brush, (int) S::clap, (int) S::snap, (int) S::rim } },
+            { "Woods",          { (int) S::wood, (int) S::clave, (int) S::logDrum, (int) S::cajon } },
+            { "Shakers & hats", { (int) S::shaker, (int) S::hat, (int) S::tambourine, (int) S::cabasa, (int) S::vinylTick } },
+            { "Hand drums",     { (int) S::lowDrum, (int) S::highDrum, (int) S::tabla, (int) S::udu, (int) S::conga } },
+            { "Tonal",          { (int) S::triangle, (int) S::kalimba, (int) S::glassDrop, (int) S::raindrop, (int) S::gong, (int) S::bell } },
+        };
+        return g;
+    }
+
+    struct Kit { const char* name; std::array<int, 8> sounds; };
+    inline const std::vector<Kit>& kits()
+    {
+        using S = Sound;
+        static const std::vector<Kit> k = {
+            { "Organic",     { (int) S::kick, (int) S::frame, (int) S::wood, (int) S::shaker, (int) S::hat, (int) S::lowDrum, (int) S::highDrum, (int) S::raindrop } },
+            { "Hand Drums",  { (int) S::feltThump, (int) S::cajon, (int) S::clave, (int) S::shaker, (int) S::cabasa, (int) S::conga, (int) S::tabla, (int) S::udu } },
+            { "Lo-Fi",       { (int) S::deepBoom, (int) S::brush, (int) S::rim, (int) S::vinylTick, (int) S::hat, (int) S::cajon, (int) S::snap, (int) S::kalimba } },
+            { "Minimal",     { (int) S::subPulse, (int) S::snap, (int) S::clave, (int) S::cabasa, (int) S::vinylTick, (int) S::logDrum, (int) S::glassDrop, (int) S::triangle } },
+            { "Temple",      { (int) S::deepBoom, (int) S::frame, (int) S::logDrum, (int) S::shaker, (int) S::triangle, (int) S::tabla, (int) S::kalimba, (int) S::gong } },
+            { "Rain Garden", { (int) S::feltThump, (int) S::brush, (int) S::wood, (int) S::shaker, (int) S::tambourine, (int) S::udu, (int) S::raindrop, (int) S::glassDrop } },
+            { "With Bell",   { (int) S::kick, (int) S::frame, (int) S::wood, (int) S::shaker, (int) S::hat, (int) S::lowDrum, (int) S::highDrum, (int) S::bell } },
+        };
+        return k;
+    }
+
+    // A captured synth patch: a stereo one-shot.
+    struct DrumSample
+    {
+        std::vector<float> L, R;
+    };
+
     struct DrumSettings
     {
         bool playing = false;
@@ -33,10 +93,11 @@ namespace zen
         std::array<float, numDrums> tune  { 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f };
         std::array<float, numDrums> decay { 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f };
         std::array<std::array<uint8_t, numSteps>, numDrums> steps {};   // 0 off, 1 on, 2 accent
+        std::array<int, numDrums> sound { 0, 1, 2, 3, 4, 5, 6, (int) Sound::raindrop };   // the Organic kit
     };
 
     //==========================================================================
-    // Ready-made grooves. Rows are KICK, FRAME, WOOD, SHAKER, HAT, LOW, HIGH, BELL;
+    // Ready-made grooves. Rows (in the Organic kit) are KICK, FRAME, WOOD, SHAKER, HAT, LOW, HIGH, RAINDROP;
     // '.' = off, 'x' = on, 'X' = accent.
     struct Groove { const char* name; float bpm; float swing; const char* rows[numDrums]; };
 
@@ -137,118 +198,291 @@ namespace zen
     struct DrumVoice
     {
         bool active = false;
-        int type = 0;
+        int sound = 0;
         float t = 0.0f, vel = 1.0f, pan = 0.0f, gain = 1.0f;
-        float tuneRatio = 1.0f, decayScale = 1.0f;
+        float tuneRatio = 1.0f, decayScale = 1.0f, decayKnob = 0.5f;
         double ph[6] {};
-        float fm = 0.0f;
         Rng rng;
         SVF f1, f2;
+        const DrumSample* sample = nullptr;
+        double samplePos = 0.0;
 
-        float render (float fs) noexcept
+        // one sample, stereo
+        void render (float fs, float& outL, float& outR) noexcept
         {
+            if (sound == (int) Sound::patch) { renderSample (fs, outL, outR); return; }
+
             const float dt = 1.0f / fs;
             float y = 0.0f;
-            auto expd = [this] (float tau) { return std::exp (-t / std::max (0.001f, tau)); };
+            auto expd = [this] (float tau) { return std::exp (-t / std::max (0.0005f, tau)); };
             auto sine = [this, dt] (int i, float hz) { ph[i] += hz * dt; ph[i] -= std::floor (ph[i]); return std::sin (twoPi * (float) ph[i]); };
+            auto done = [this] (float env, float minT = 0.0f) { if (t > minT && env < 0.0005f) active = false; };
             float bp = 0.0f, hp = 0.0f;
+            const float tr = tuneRatio, ds = decayScale;
 
-            switch ((Drum) type)
+            switch ((Sound) sound)
             {
-                case Drum::kick:
+                case Sound::kick:
                 {
-                    const float f = 46.0f * tuneRatio + 120.0f * tuneRatio * expd (0.032f);
-                    const float env = expd (0.32f * decayScale);
-                    y = std::tanh (1.6f * sine (0, f) * env) * 0.95f;
+                    const float env = expd (0.32f * ds);
+                    y = std::tanh (1.6f * sine (0, 46.0f * tr + 120.0f * tr * expd (0.032f)) * env) * 0.95f;
                     if (t < 0.004f) y += rng.next() * 0.25f * (1.0f - t / 0.004f);
-                    if (env < 0.0005f) active = false;
-                    break;
+                    done (env); break;
                 }
-                case Drum::frame:
+                case Sound::deepBoom:
                 {
-                    const float tone = (sine (0, 182.0f * tuneRatio) * 0.6f + sine (1, 331.0f * tuneRatio) * 0.35f) * expd (0.09f * decayScale);
+                    const float env = expd (0.7f * ds);
+                    y = std::tanh (2.0f * sine (0, 38.0f * tr + 70.0f * tr * expd (0.06f)) * env) * 0.9f;
+                    done (env); break;
+                }
+                case Sound::feltThump:
+                {
+                    const float env = expd (0.18f * ds);
+                    f1.process (sine (0, 62.0f * tr + 40.0f * tr * expd (0.02f)), bp, hp);
+                    y = (sine (1, 62.0f * tr) * 0.7f + bp * 0.6f) * env;
+                    done (env); break;
+                }
+                case Sound::subPulse:
+                {
+                    const float env = std::min (1.0f, t / 0.005f) * expd (0.45f * ds);
+                    y = sine (0, 45.0f * tr) * env * 0.95f;
+                    done (env, 0.01f); break;
+                }
+                case Sound::frame:
+                {
+                    const float tone = (sine (0, 182.0f * tr) * 0.6f + sine (1, 331.0f * tr) * 0.35f) * expd (0.09f * ds);
                     f1.process (rng.next(), bp, hp);
-                    const float nz = bp * 2.2f * expd (0.16f * decayScale);
-                    y = tone * 0.7f + nz * 0.8f;
-                    if (t > 1.2f * decayScale + 0.1f) active = false;
+                    y = tone * 0.7f + bp * 2.2f * expd (0.16f * ds) * 0.8f;
+                    if (t > 1.2f * ds + 0.1f) active = false;
                     break;
                 }
-                case Drum::wood:
+                case Sound::brush:
                 {
-                    const float env = expd (0.045f * decayScale);
-                    y = (sine (0, 880.0f * tuneRatio) * 0.7f + sine (1, 1392.0f * tuneRatio) * 0.35f) * env;
+                    f1.process (rng.next(), bp, hp);
+                    const float env = std::min (1.0f, t / 0.015f) * expd (0.18f * ds);
+                    y = bp * 1.6f * env + sine (0, 200.0f * tr) * expd (0.05f) * 0.2f;
+                    done (env, 0.02f); break;
+                }
+                case Sound::clap:
+                {
+                    f1.process (rng.next(), bp, hp);
+                    float env = 0.0f;
+                    for (int k = 0; k < 3; ++k) { const float tk = t - 0.011f * (float) k; if (tk >= 0.0f) env = std::max (env, std::exp (-tk / 0.006f)); }
+                    if (t > 0.022f) env = std::max (env, 0.6f * std::exp (-(t - 0.022f) / (0.12f * ds)));
+                    y = bp * 2.4f * env;
+                    done (env, 0.03f); break;
+                }
+                case Sound::snap:
+                {
+                    f1.process (rng.next(), bp, hp);
+                    const float env = expd (0.022f * ds);
+                    y = bp * 2.6f * env + sine (0, 1800.0f * tr) * expd (0.008f) * 0.4f;
+                    done (env); break;
+                }
+                case Sound::rim:
+                {
+                    f1.process (rng.next(), bp, hp);
+                    const float env = expd (0.02f * ds);
+                    y = sine (0, 1650.0f * tr) * expd (0.012f * ds) * 0.6f + sine (1, 450.0f * tr) * env * 0.5f + bp * expd (0.008f) * 1.2f;
+                    done (env); break;
+                }
+                case Sound::wood:
+                {
+                    const float env = expd (0.045f * ds);
+                    y = (sine (0, 880.0f * tr) * 0.7f + sine (1, 1392.0f * tr) * 0.35f) * env;
                     if (t < 0.002f) y += rng.next() * 0.4f;
-                    if (env < 0.0005f) active = false;
-                    break;
+                    done (env); break;
                 }
-                case Drum::shaker:
+                case Sound::clave:
+                {
+                    const float env = expd (0.06f * ds);
+                    y = (sine (0, 2500.0f * tr) * 0.75f + sine (1, 4120.0f * tr) * 0.2f * expd (0.01f)) * env * 0.8f;
+                    done (env); break;
+                }
+                case Sound::logDrum:
+                {
+                    const float env = expd (0.25f * ds);
+                    const float f = 330.0f * tr * (1.0f + 0.08f * expd (0.02f));
+                    y = (sine (0, f) * 0.8f + sine (1, f * 2.3f) * 0.3f * expd (0.05f * ds)) * env;
+                    done (env); break;
+                }
+                case Sound::cajon:
                 {
                     f1.process (rng.next(), bp, hp);
-                    const float att = std::min (1.0f, t / 0.009f);
-                    const float env = att * expd (0.07f * decayScale);
-                    y = hp * env * 0.9f;
-                    if (t > 0.012f && env < 0.0005f) active = false;
-                    break;
+                    const float env = expd (0.08f * ds);
+                    y = sine (0, 120.0f * tr * (1.0f + 0.3f * expd (0.01f))) * env * 0.9f + bp * 1.5f * expd (0.05f * ds);
+                    done (env); break;
                 }
-                case Drum::hat:
+                case Sound::shaker:
+                {
+                    f1.process (rng.next(), bp, hp);
+                    const float env = std::min (1.0f, t / 0.009f) * expd (0.07f * ds);
+                    y = hp * env * 0.9f;
+                    done (env, 0.012f); break;
+                }
+                case Sound::cabasa:
+                {
+                    f1.process (rng.next(), bp, hp);
+                    const float env = std::min (1.0f, t / 0.012f) * expd (0.05f * ds);
+                    y = hp * env * 1.1f;
+                    done (env, 0.015f); break;
+                }
+                case Sound::vinylTick:
+                {
+                    f1.process (rng.next(), bp, hp);
+                    const float env = expd (0.0015f * ds);
+                    y = bp * env * 2.0f;
+                    done (env); break;
+                }
+                case Sound::hat:
+                case Sound::tambourine:
                 {
                     static const float r[6] = { 205.3f, 304.4f, 369.6f, 522.7f, 540.0f, 800.0f };
+                    const bool tamb = (Sound) sound == Sound::tambourine;
                     float m = 0.0f;
-                    for (int i = 0; i < 6; ++i) { ph[i] += r[i] * 2.0f * tuneRatio * dt; ph[i] -= std::floor (ph[i]); m += ph[i] < 0.5 ? 1.0f : -1.0f; }
-                    f1.process (m * 0.17f, bp, hp);
+                    for (int i = 0; i < 6; ++i) { ph[i] += r[i] * (tamb ? 5.2f : 2.0f) * tr * dt; ph[i] -= std::floor (ph[i]); m += ph[i] < 0.5 ? 1.0f : -1.0f; }
+                    f1.process (m * 0.17f + (tamb ? rng.next() * 0.2f : 0.0f), bp, hp);
                     float b2, h2;
                     f2.process (bp, b2, h2);
-                    const float env = expd (0.045f * decayScale);
-                    y = h2 * env * 1.1f;
-                    if (env < 0.0005f) active = false;
-                    break;
+                    const float env = expd ((tamb ? 0.15f : 0.045f) * ds) * (tamb ? (0.75f + 0.25f * std::sin (t * 180.0f)) : 1.0f);
+                    y = h2 * env * (tamb ? 0.9f : 1.1f);
+                    done (env); break;
                 }
-                case Drum::lowDrum:
-                case Drum::highDrum:
+                case Sound::lowDrum:
+                case Sound::highDrum:
                 {
-                    const float base = ((Drum) type == Drum::lowDrum ? 98.0f : 196.0f) * tuneRatio;
-                    const float f = base * (1.0f + 0.45f * expd (0.04f));
-                    const float env = expd ((type == (int) Drum::lowDrum ? 0.3f : 0.18f) * decayScale);
+                    const float base = ((Sound) sound == Sound::lowDrum ? 98.0f : 196.0f) * tr;
+                    const float env = expd (((Sound) sound == Sound::lowDrum ? 0.3f : 0.18f) * ds);
                     f1.process (rng.next(), bp, hp);
-                    y = sine (0, f) * env * 0.9f + bp * expd (0.02f) * 0.5f;
-                    if (env < 0.0005f) active = false;
-                    break;
+                    y = sine (0, base * (1.0f + 0.45f * expd (0.04f))) * env * 0.9f + bp * expd (0.02f) * 0.5f;
+                    done (env); break;
                 }
-                case Drum::bell:
+                case Sound::tabla:
+                {
+                    const float env = expd (0.4f * ds);
+                    const float f = 420.0f * tr;
+                    y = (sine (0, f) * 0.6f + sine (1, f * 2.0f) * 0.3f * expd (0.15f) + sine (2, f * 3.0f) * 0.15f * expd (0.08f)) * env;
+                    if (t < 0.006f) y += rng.next() * 0.3f * (1.0f - t / 0.006f);
+                    done (env); break;
+                }
+                case Sound::udu:
+                {
+                    const float env = expd (0.12f * ds);
+                    y = sine (0, 400.0f * tr * (1.0f - 0.5f * expd (0.04f))) * env * 0.9f;   // the pitch rises: a water drop
+                    done (env); break;
+                }
+                case Sound::raindrop:
+                {
+                    const float env = expd (0.05f * ds);
+                    y = sine (0, 900.0f * tr * (1.0f - 0.6f * expd (0.015f))) * env * 0.75f;
+                    done (env); break;
+                }
+                case Sound::conga:
+                {
+                    f1.process (rng.next(), bp, hp);
+                    const float env = expd (0.22f * ds);
+                    y = sine (0, 200.0f * tr * (1.0f + 0.25f * expd (0.015f))) * env * 0.85f + bp * expd (0.01f) * 0.6f;
+                    done (env); break;
+                }
+                case Sound::triangle:
+                {
+                    const float env = expd (1.2f * ds);
+                    y = (sine (0, 4200.0f * tr) * 0.5f + sine (1, 6100.0f * tr) * 0.25f) * env * 0.45f;
+                    done (env); break;
+                }
+                case Sound::kalimba:
+                {
+                    const float env = expd (0.6f * ds);
+                    y = (sine (0, 660.0f * tr) * 0.8f + sine (1, 660.0f * tr * 6.3f) * 0.25f * expd (0.02f)) * env * 0.7f;
+                    if (t < 0.002f) y += rng.next() * 0.2f;
+                    done (env); break;
+                }
+                case Sound::glassDrop:
+                {
+                    const float env = expd (0.35f * ds);
+                    const float f = 1400.0f * tr * (1.0f + 0.04f * expd (0.03f));
+                    y = (sine (0, f) * 0.6f + sine (1, f * 2.76f) * 0.25f * expd (0.08f)) * env * 0.6f;
+                    done (env); break;
+                }
+                case Sound::gong:
+                {
+                    const float c = 110.0f * tr;
+                    const float idx = 0.8f + 1.2f * std::min (1.0f, t / 0.3f) * expd (1.5f);
+                    const float mod = sine (1, c * 1.414f) * idx;
+                    ph[0] += c * dt; ph[0] -= std::floor (ph[0]);
+                    const float env = std::min (1.0f, t / 0.06f) * expd (2.5f * ds);
+                    y = std::sin (twoPi * (float) ph[0] + mod) * env * 0.55f;
+                    done (env, 0.1f); break;
+                }
+                case Sound::bell:
                 default:
                 {
-                    const float c = 880.0f * tuneRatio;
-                    const float idx = 0.6f + 2.4f * expd (0.25f);
-                    const float mod = sine (1, c * 2.76f) * idx;
+                    const float c = 880.0f * tr;
+                    const float mod = sine (1, c * 2.76f) * (0.6f + 2.4f * expd (0.25f));
                     ph[0] += c * dt; ph[0] -= std::floor (ph[0]);
-                    const float env = expd (0.7f * decayScale);
+                    const float env = expd (0.7f * ds);
                     y = std::sin (twoPi * (float) ph[0] + mod) * env * 0.45f;
-                    if (env < 0.0005f) active = false;
-                    break;
+                    done (env); break;
                 }
             }
             t += dt;
-            return y * vel * gain;
+            y *= vel * gain;
+            outL += y * (1.0f - std::max (0.0f, pan));
+            outR += y * (1.0f + std::min (0.0f, pan));
         }
 
-        void start (int drumType, float velocity, float level, float tune, float decay, float fs, uint32_t seed)
+        void renderSample (float fs, float& outL, float& outR) noexcept
         {
-            active = true; type = drumType; t = 0.0f; vel = velocity; gain = level;
+            if (sample == nullptr || sample->L.empty()) { active = false; return; }
+            const int i = (int) samplePos;
+            const int len = (int) sample->L.size();
+            if (i >= len - 1) { active = false; return; }
+            // DECAY below the middle shortens the sound with a fade
+            float env = 1.0f;
+            if (decayKnob < 0.5f)
+            {
+                const float keep = 0.05f + 1.9f * decayKnob;                // fraction of the length kept
+                const float x = (float) samplePos / ((float) len * keep);
+                env = x < 0.7f ? 1.0f : std::max (0.0f, 1.0f - (x - 0.7f) / 0.3f);
+                if (env <= 0.0f) { active = false; return; }
+            }
+            const float g = vel * gain * env;
+            outL += sample->L[(size_t) i] * g;
+            outR += sample->R[(size_t) i] * g;
+            samplePos += 1.0;
+            t += 1.0f / fs;
+        }
+
+        void start (int snd, float velocity, float level, float tune, float decay, float fs, uint32_t seed, float rowPan,
+                    const DrumSample* smp)
+        {
+            active = true; sound = snd; t = 0.0f; vel = velocity; gain = level; pan = rowPan;
             tuneRatio = std::pow (2.0f, (clamp01 (tune) - 0.5f) * 2.0f);          // +- an octave
             decayScale = std::pow (4.0f, (clamp01 (decay) - 0.5f) * 2.0f);        // x0.25 .. x4
+            decayKnob = clamp01 (decay);
             for (auto& p : ph) p = 0.0;
             rng.s = seed | 1u;
             f1.clear(); f2.clear();
-            switch ((Drum) type)
+            sample = smp; samplePos = 0.0;
+            if (snd == (int) Sound::patch && smp == nullptr) { active = false; return; }
+            switch ((Sound) snd)
             {
-                case Drum::frame:   f1.set (1800.0f * tuneRatio, 0.9f, fs); break;
-                case Drum::shaker:  f1.set (5200.0f * tuneRatio, 0.7f, fs); break;
-                case Drum::hat:     f1.set (9000.0f, 1.2f, fs); f2.set (7000.0f, 0.7f, fs); break;
-                case Drum::lowDrum: case Drum::highDrum: f1.set (900.0f * tuneRatio, 1.0f, fs); break;
+                case Sound::frame:      f1.set (1800.0f * tuneRatio, 0.9f, fs); break;
+                case Sound::shaker:     f1.set (5200.0f * tuneRatio, 0.7f, fs); break;
+                case Sound::cabasa:     f1.set (7500.0f * tuneRatio, 0.7f, fs); break;
+                case Sound::hat:        f1.set (9000.0f, 1.2f, fs); f2.set (7000.0f, 0.7f, fs); break;
+                case Sound::tambourine: f1.set (10000.0f, 1.0f, fs); f2.set (6500.0f, 0.7f, fs); break;
+                case Sound::lowDrum: case Sound::highDrum: f1.set (900.0f * tuneRatio, 1.0f, fs); break;
+                case Sound::conga:      f1.set (1500.0f * tuneRatio, 1.0f, fs); break;
+                case Sound::cajon:      f1.set (900.0f * tuneRatio, 0.8f, fs); break;
+                case Sound::brush:      f1.set (3500.0f * tuneRatio, 0.6f, fs); break;
+                case Sound::clap:       f1.set (1200.0f * tuneRatio, 1.2f, fs); break;
+                case Sound::snap:       f1.set (2500.0f * tuneRatio, 2.0f, fs); break;
+                case Sound::rim:        f1.set (4000.0f * tuneRatio, 1.5f, fs); break;
+                case Sound::vinylTick:  f1.set (3000.0f * tuneRatio, 0.8f, fs); break;
+                case Sound::feltThump:  f1.set (180.0f * tuneRatio, 0.7f, fs); break;
                 default: break;
             }
-            static const float pans[numDrums] = { 0.0f, 0.05f, -0.3f, 0.35f, 0.25f, -0.2f, 0.2f, -0.15f };
-            pan = pans[std::min (numDrums - 1, std::max (0, type))];
         }
     };
 
@@ -301,8 +535,7 @@ namespace zen
             else currentStep = -1;
             wasPlaying = d.playing;
 
-            if (const int h = pendingHit.exchange (-1); h >= 0)
-                nextVoice (h).start (h, 0.9f, d.level[(size_t) h], d.tune[(size_t) h], d.decay[(size_t) h], fs, ++seed * 2654435761u);
+            if (const int h = pendingHit.exchange (-1); h >= 0) startRow (d, h, 0.9f);
 
             int t = 0;
             for (int i = 0; i < n; ++i)
@@ -314,8 +547,7 @@ namespace zen
                     {
                         const int v = d.steps[(size_t) r][(size_t) step];
                         if (v == 0) continue;
-                        auto& voice = nextVoice (r);
-                        voice.start (r, v == 2 ? 1.0f : 0.62f, d.level[(size_t) r], d.tune[(size_t) r], d.decay[(size_t) r], fs, ++seed * 2654435761u);
+                        startRow (d, r, v == 2 ? 1.0f : 0.62f);
                         if (r == 0) ++kickCount;
                         ++hitCount;
                     }
@@ -323,15 +555,16 @@ namespace zen
                 }
                 float l = 0.0f, rr = 0.0f;
                 for (auto& v : voices)
-                    if (v.active)
-                    {
-                        const float y = v.render (fs);
-                        l += y * (1.0f - std::max (0.0f, v.pan));
-                        rr += y * (1.0f + std::min (0.0f, v.pan));
-                    }
+                    if (v.active) v.render (fs, l, rr);
                 const float g = clamp01 (d.volume) * 0.8f;
                 L[i] = l * g; R[i] = rr * g;
             }
+        }
+
+        // A captured patch for a row (owner keeps it alive a while after replacing it)
+        void setSample (int row, const DrumSample* smp) noexcept
+        {
+            if (row >= 0 && row < numDrums) samples[(size_t) row].store (smp);
         }
 
         // UI: play one drum now (to hear it while editing)
@@ -347,6 +580,16 @@ namespace zen
         bool wasPlaying = false;
         uint32_t seed = 1;
         std::atomic<int> pendingHit { -1 };
+        std::array<std::atomic<const DrumSample*>, numDrums> samples {};
+
+        void startRow (const DrumSettings& d, int r, float velocity) noexcept
+        {
+            static const float pans[numDrums] = { 0.0f, 0.05f, -0.3f, 0.35f, 0.25f, -0.2f, 0.2f, -0.15f };
+            const int snd = d.sound[(size_t) r];
+            const DrumSample* smp = snd == (int) Sound::patch ? samples[(size_t) r].load() : nullptr;
+            nextVoice (r).start (snd, velocity, d.level[(size_t) r], d.tune[(size_t) r], d.decay[(size_t) r], fs,
+                                 ++seed * 2654435761u, pans[r], smp);
+        }
         std::array<DrumVoice, numDrums * 2> voices {};
         std::array<int, numDrums> rr {};
 

@@ -63,7 +63,7 @@ namespace ids
 class ZenProcessor : public juce::AudioProcessor
 {
 public:
-    ZenProcessor();
+    explicit ZenProcessor (bool lightweight = false);   // lightweight: an offline copy used to capture patches
     ~ZenProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -117,6 +117,24 @@ public:
     void setDrumStep (int drum, int step, int value);
     void loadGroove (int index);
     void hitDrum (int drum)                     { engine.drums.requestHit (drum); }
+    void setDrumSound (int row, int sound);     // a sound from the library (forgets any patch on that row)
+    void loadKit (int index);
+
+    // A synth patch captured onto a grid row as a one-shot, at the note set by the row's TUNE.
+    struct PatchRecipe
+    {
+        int kind = 0;                 // 0 none, 1 factory preset (by name), 2 a user preset file, 3 a snapshot of a sound
+        juce::String name;            // shown on the row
+        juce::String file;            // kind 2
+        juce::MemoryBlock state;      // kind 3
+    };
+    void captureDrumPatch (int row, PatchRecipe);      // async; uses the row's TUNE as the note
+    void recaptureDrumPatch (int row);                 // after TUNE changes on a patch row
+    PatchRecipe snapshotOfCurrentSound();
+    juce::String drumRowName (int row) const;
+    static int noteForTune (float tune)                { return 24 + juce::roundToInt (juce::jlimit (0.0f, 1.0f, tune) * 60.0f); }
+    static float tuneForNote (int note)                { return (float) (note - 24) / 60.0f; }
+    std::atomic<int> capturesRunning { 0 };
 
     // On-screen pitch (-1..1) and mod (0..1) strips
     void setUiBend (float b)                    { engine.setUiBend (b); }
@@ -183,6 +201,13 @@ private:
     void publishTable (zen::UserTable);
     void applyState (const juce::ValueTree&, bool includePlaySettings);
     juce::String userPresetName;
+    bool lightweight = false, snapshotting = false;
+    std::shared_ptr<int> lifeToken = std::make_shared<int> (0);
+    std::array<PatchRecipe, zen::numDrums> patchRecipes;
+    std::array<std::shared_ptr<const zen::DrumSample>, zen::numDrums> patchSamples;
+    std::array<int, zen::numDrums> captureGen {};
+    std::vector<std::pair<juce::uint32, std::shared_ptr<const void>>> retiredSamples;
+    void installPatchSample (int row, int gen, std::shared_ptr<const zen::DrumSample>);
     mutable std::mutex drumLock;
     zen::DrumSettings drumSettings;              // written by the UI (under drumLock), copied per block
     std::atomic<int> drumVersion { 0 };

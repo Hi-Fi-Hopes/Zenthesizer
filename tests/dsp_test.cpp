@@ -283,6 +283,7 @@ int main()
         {
             Run r; r.s.reverbMix = 0; applyGroove (r.s.drums, g); r.s.drums.playing = true;
             r.s.drums.tune = { 0.2f, 0.8f, 0.3f, 0.9f, 0.1f, 0.7f, 0.4f, 1.0f };
+            r.s.drums.sound = kits()[(size_t) (&g - &grooves()[0]) % kits().size()].sounds;   // try the kits too
             r.render (48000 * 4);
             const float lv = rms (r.L, 0, r.L.size());
             if (std::string (g.name) != "Empty")
@@ -347,6 +348,46 @@ int main()
         CHECK (std::abs (r.eng.display.src[(int) Src::wheel].load() - 0.7f) < 0.01f, "mod strip sets the wheel");
         r.render (512, { { 0, 0xB0, 1, 0 } });                                     // the keyboard's wheel takes over
         CHECK (r.eng.display.src[(int) Src::wheel].load() < 0.01f, "MIDI mod wheel takes over again");
+    }
+
+    // 15. every sound in the library: plays, stays in range, dies away; a captured patch plays from a row
+    {
+        int bad = 0;
+        for (int snd = 0; snd < numSounds; ++snd)
+            for (float tune : { 0.0f, 0.5f, 1.0f })
+                for (float dec : { 0.0f, 0.5f, 1.0f })
+                {
+                    Run r; r.s.reverbMix = 0; r.s.drums.playing = true; r.s.drums.tempo = 20;
+                    r.s.drums.sound[0] = snd; r.s.drums.tune[0] = tune; r.s.drums.decay[0] = dec; r.s.drums.level[0] = 1.0f;
+                    r.s.drums.volume = 1.0f; r.s.drums.steps[0][0] = 2;
+                    const int len = 48000 * 12;
+                    r.render (len);                                         // one hit (a bar at 20 bpm, the slowest tempo, is 12 s)
+                    // (stop short of the end: the next bar's hit lands right on it)
+                    const float pk = peak (r.L), tail = rms (r.L, (size_t) (len - 9600), (size_t) (len - 4800));
+                    // the longest settings (gong, triangle at full decay) are meant to ring a long time
+                    const bool mustDie = dec < 0.9f;
+                    if (! finite (r.L) || pk > 1.2f || pk < 0.02f || (mustDie && tail > 0.003f))
+                    {
+                        ++bad;
+                        std::printf ("      %-11s tune %.1f decay %.1f: peak %.3f tail %.4f\n", soundName (snd), tune, dec, pk, tail);
+                    }
+                }
+        CHECK (bad == 0, "all %d sounds x 9 settings: audible, bounded, die away", numSounds);
+
+        DrumSample smp; smp.L.assign (24000, 0.0f); smp.R.assign (24000, 0.0f);
+        for (int i = 0; i < 24000; ++i) smp.L[(size_t) i] = smp.R[(size_t) i] = 0.5f * std::sin (twoPi * 220.0f * (float) i / 48000.0f) * std::exp (-(float) i / 8000.0f);
+        Run r; r.s.reverbMix = 0; r.s.drums.playing = true; r.s.drums.tempo = 120; r.s.drums.volume = 1.0f;
+        r.s.drums.sound[7] = (int) Sound::patch; r.s.drums.level[7] = 1.0f; r.s.drums.steps[7][0] = 2;
+        r.eng.drums.setSample (7, &smp);
+        r.render (24000);
+        CHECK (peak (r.L) > 0.2f && finite (r.L), "a captured patch plays from its row (peak %.2f)", peak (r.L));
+        r.s.drums.decay[7] = 0.1f; r.L.clear(); r.eng.drums.setSample (7, &smp);
+        r.render (96000);   // next bar
+        // the hit lands at 72000 here; at DECAY 0.1 it should be gone ~6000 samples later
+        CHECK (rms (r.L, 72000 + 7000, 96000) < 1.0e-3f && rms (r.L, 72000, 72000 + 3000) > 0.05f, "DECAY shortens a patch row");
+        r.eng.drums.setSample (7, nullptr);
+        r.render (96000);
+        CHECK (finite (r.L), "a patch row without a sample stays silent");
     }
 
     std::printf (failures == 0 ? "\nALL PASSED\n" : "\n%d FAILED\n", failures);

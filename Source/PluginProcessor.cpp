@@ -211,9 +211,10 @@ ZenProcessor::~ZenProcessor()
     engine.setUserTable (nullptr);
 }
 
-ZenProcessor::ZenProcessor()
+ZenProcessor::ZenProcessor (bool lightweightCopy)
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "ZenthesizerState", createLayout())
+      apvts (*this, nullptr, "ZenthesizerState", createLayout()),
+      lightweight (lightweightCopy)
 {
     for (auto* param : getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (param))
@@ -233,7 +234,7 @@ ZenProcessor::ZenProcessor()
         keyframes = { make (Shape::sine), make (Shape::organ), make (Shape::hollow), make (Shape::bell) };
         publishTable (zen::UserTable::build (keyframes));
     }
-    builder = std::make_unique<TableBuilder> (*this);
+    if (! lightweight) builder = std::make_unique<TableBuilder> (*this);   // a capture copy builds tables right away
 
     zen::applyGroove (drumSettings, zen::grooves()[1]);   // a groove ready to go (not playing)
     drumSettings.playing = false;
@@ -266,6 +267,152 @@ void ZenProcessor::setDrumStep (int drum, int step, int value)
         drumSettings.steps[(size_t) drum][(size_t) step] = (uint8_t) juce::jlimit (0, 2, value);
     }
     ++drumVersion;
+}
+
+void ZenProcessor::setDrumSound (int row, int sound)
+{
+    if (! juce::isPositiveAndBelow (row, zen::numDrums)) return;
+    {
+        const std::lock_guard<std::mutex> l (drumLock);
+        drumSettings.sound[(size_t) row] = sound;
+    }
+    if (sound != (int) zen::Sound::patch)
+    {
+        patchRecipes[(size_t) row] = {};
+        ++captureGen[(size_t) row];   // a capture still running for this row is now out of date
+    }
+    ++drumVersion;
+}
+
+void ZenProcessor::loadKit (int index)
+{
+    if (! juce::isPositiveAndBelow (index, (int) zen::kits().size())) return;
+    for (int r = 0; r < zen::numDrums; ++r) setDrumSound (r, zen::kits()[(size_t) index].sounds[(size_t) r]);
+    {
+        const std::lock_guard<std::mutex> l (drumLock);
+        drumSettings.tune.fill (0.5f);
+        drumSettings.decay.fill (0.5f);
+    }
+    ++drumVersion;
+}
+
+juce::String ZenProcessor::drumRowName (int row) const
+{
+    if (! juce::isPositiveAndBelow (row, zen::numDrums)) return {};
+    const auto d = getDrums();
+    if (d.sound[(size_t) row] == (int) zen::Sound::patch)
+    {
+        auto n = patchRecipes[(size_t) row].name.toUpperCase();
+        return n.length() > 12 ? n.substring (0, 11) + "." : n;
+    }
+    return zen::soundName (d.sound[(size_t) row]);
+}
+
+ZenProcessor::PatchRecipe ZenProcessor::snapshotOfCurrentSound()
+{
+    PatchRecipe r;
+    r.kind = 3;
+    r.name = currentPresetName();
+    snapshotting = true;               // leave the grid's own captured patches out (no snapshots inside snapshots)
+    getStateInformation (r.state);
+    snapshotting = false;
+    return r;
+}
+
+void ZenProcessor::captureDrumPatch (int row, PatchRecipe recipe)
+{
+    if (! juce::isPositiveAndBelow (row, zen::numDrums) || recipe.kind == 0) return;
+    patchRecipes[(size_t) row] = recipe;
+    {
+        const std::lock_guard<std::mutex> l (drumLock);
+        drumSettings.sound[(size_t) row] = (int) zen::Sound::patch;
+    }
+    ++drumVersion;
+    recaptureDrumPatch (row);
+}
+
+void ZenProcessor::recaptureDrumPatch (int row)
+{
+    if (! juce::isPositiveAndBelow (row, zen::numDrums)) return;
+    const auto recipe = patchRecipes[(size_t) row];
+    if (recipe.kind == 0) return;
+    const int note = noteForTune (getDrums().tune[(size_t) row]);
+    const int gen = ++captureGen[(size_t) row];
+
+    // a throwaway copy of the synth, set up with that sound (made here, on the message thread)
+    auto copy = std::make_shared<ZenProcessor> (true);
+    if (recipe.kind == 1)
+    {
+        const auto info = presetInfo();
+        for (int i = 0; i < (int) info.size(); ++i)
+            if (info[(size_t) i].name == recipe.name) { copy->setCurrentProgram (i); break; }
+    }
+    else if (recipe.kind == 2) copy->loadUserPreset (juce::File (recipe.file));
+    else copy->setStateInformation (recipe.state.getData(), (int) recipe.state.getSize());
+    {
+        auto d = copy->getDrums(); d.playing = false; copy->setDrums (d);   // just the synth
+    }
+
+    const double fs = getSampleRate() > 0.0 ? getSampleRate() : 48000.0;
+    ++capturesRunning;
+    juce::Thread::launch ([copy, fs, note, row, gen, alive = std::weak_ptr<int> (lifeToken), this]
+    {
+        // play the note once, offline: hold ~2 s, then let it ring out, 3 s at most
+        copy->setPlayConfigDetails (0, 2, fs, 512);
+        copy->prepareToPlay (fs, 512);
+        const int total = (int) (fs * 3.0), hold = (int) (fs * 2.0);
+        auto smp = std::make_shared<zen::DrumSample>();
+        smp->L.reserve ((size_t) total); smp->R.reserve ((size_t) total);
+        juce::AudioBuffer<float> buf (2, 512);
+        for (int pos = 0; pos < total; pos += 512)
+        {
+            juce::MidiBuffer midi;
+            if (pos == 0) midi.addEvent (juce::MidiMessage::noteOn (1, note, (juce::uint8) 110), 0);
+            if (hold >= pos && hold < pos + 512) midi.addEvent (juce::MidiMessage::noteOff (1, note), hold - pos);
+            copy->processBlock (buf, midi);
+            const int n = std::min (512, total - pos);
+            smp->L.insert (smp->L.end(), buf.getReadPointer (0), buf.getReadPointer (0) + n);
+            smp->R.insert (smp->R.end(), buf.getReadPointer (1), buf.getReadPointer (1) + n);
+        }
+        // trim the silence at the end, fade the last 20 ms, bring the peak to a steady level
+        int last = 0; float peak = 0.0f;
+        for (int i = 0; i < (int) smp->L.size(); ++i)
+        {
+            const float a = std::max (std::abs (smp->L[(size_t) i]), std::abs (smp->R[(size_t) i]));
+            if (a > 1.0e-4f) last = i;
+            peak = std::max (peak, a);
+        }
+        const int len = std::min ((int) smp->L.size(), last + (int) (fs * 0.05));
+        smp->L.resize ((size_t) std::max (16, len)); smp->R.resize ((size_t) std::max (16, len));
+        const int fade = std::min ((int) smp->L.size() / 2, (int) (fs * 0.02));
+        for (int i = 0; i < fade; ++i)
+        {
+            const float g = (float) i / (float) fade;
+            smp->L[smp->L.size() - 1 - (size_t) i] *= g; smp->R[smp->R.size() - 1 - (size_t) i] *= g;
+        }
+        if (peak > 1.0e-4f) { const float g = 0.8f / peak; for (auto& v : smp->L) v *= g; for (auto& v : smp->R) v *= g; }
+
+        juce::MessageManager::callAsync ([copy, alive, this, row, gen, smp]() mutable
+        {
+            if (alive.lock() == nullptr) return;   // the plugin has gone
+            --capturesRunning;
+            installPatchSample (row, gen, std::move (smp));
+            copy.reset();
+        });
+    });
+}
+
+void ZenProcessor::installPatchSample (int row, int gen, std::shared_ptr<const zen::DrumSample> smp)
+{
+    if (gen != captureGen[(size_t) row]) return;   // something newer was asked for
+    auto old = patchSamples[(size_t) row];
+    patchSamples[(size_t) row] = smp;
+    engine.drums.setSample (row, smp.get());
+    // a voice may still be playing the old one for a few seconds
+    const auto now = juce::Time::getMillisecondCounter();
+    if (old != nullptr) retiredSamples.push_back ({ now, std::move (old) });
+    retiredSamples.erase (std::remove_if (retiredSamples.begin(), retiredSamples.end(),
+                                          [now] (const auto& r) { return now - r.first > 10000; }), retiredSamples.end());
 }
 
 void ZenProcessor::loadGroove (int index)
@@ -450,7 +597,7 @@ bool ZenProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 
 void ZenProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    engine.prepare (sampleRate);
+    engine.prepare (sampleRate, lightweight);
     events.reserve ((size_t) std::max (256, samplesPerBlock));
 }
 
@@ -667,6 +814,18 @@ void ZenProcessor::getStateInformation (juce::MemoryBlock& destData)
         state.setProperty ("drumLevel", join (d.level), nullptr);
         state.setProperty ("drumTune", join (d.tune), nullptr);
         state.setProperty ("drumDecay", join (d.decay), nullptr);
+        juce::StringArray snd; for (int v : d.sound) snd.add (juce::String (v));
+        state.setProperty ("drumSounds", snd.joinIntoString (","), nullptr);
+        for (int r = 0; r < zen::numDrums; ++r)
+        {
+            const auto& pr = patchRecipes[(size_t) r];
+            if (pr.kind == 0 || snapshotting) continue;
+            const juce::String k = "drumPatch" + juce::String (r);
+            state.setProperty (k + "Kind", pr.kind, nullptr);
+            state.setProperty (k + "Name", pr.name, nullptr);
+            if (pr.kind == 2) state.setProperty (k + "File", pr.file, nullptr);
+            if (pr.kind == 3) state.setProperty (k + "State", pr.state.toBase64Encoding(), nullptr);
+        }
     }
 
     const auto k = getKeyframes();
@@ -705,8 +864,30 @@ void ZenProcessor::setStateInformation (const void* data, int sizeInBytes)
                     if (sa.size() == zen::numDrums) for (int i = 0; i < zen::numDrums; ++i) a[(size_t) i] = sa[i].getFloatValue();
                 };
                 split ("drumLevel", d.level); split ("drumTune", d.tune); split ("drumDecay", d.decay);
+                if (auto sa = juce::StringArray::fromTokens (tree.getProperty ("drumSounds").toString(), ",", ""); sa.size() == zen::numDrums)
+                    for (int i = 0; i < zen::numDrums; ++i) d.sound[(size_t) i] = sa[i].getIntValue();
                 d.playing = false;   // a reopened session starts quiet
                 setDrums (d);
+
+                // captured patches: keep the recipes, capture them again (on the message thread)
+                std::vector<int> rows;
+                for (int r = 0; r < zen::numDrums; ++r)
+                {
+                    const juce::String k = "drumPatch" + juce::String (r);
+                    PatchRecipe pr;
+                    pr.kind = (int) tree.getProperty (k + "Kind", 0);
+                    pr.name = tree.getProperty (k + "Name", "").toString();
+                    pr.file = tree.getProperty (k + "File", "").toString();
+                    if (pr.kind == 3) pr.state.fromBase64Encoding (tree.getProperty (k + "State", "").toString());
+                    patchRecipes[(size_t) r] = pr;
+                    if (pr.kind != 0 && d.sound[(size_t) r] == (int) zen::Sound::patch) rows.push_back (r);
+                }
+                if (! rows.empty() && ! lightweight)
+                    juce::MessageManager::callAsync ([alive = std::weak_ptr<int> (lifeToken), this, rows]
+                    {
+                        if (alive.lock() == nullptr) return;
+                        for (int r : rows) recaptureDrumPatch (r);
+                    });
             }
             applyState (tree, true);
         }

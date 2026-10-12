@@ -21,7 +21,7 @@ Built with JUCE. GitHub builds the Windows `.vst3` on every push to `main`.
 | SYNTH | the slab: engines, filter/amp ring, mod sources, the porthole |
 | MOD | Env 1/2, LFO 1/2, Random, key tracking, velocity, the 12 mod slots |
 | WAVES | the wavetable sandbox for Engine B's OWN table |
-| BEAT | organic drum kit and 16-step pattern, grooves, tempo, swing |
+| BEAT | 16-step pattern, 29 sounds, kits, synth patches on rows, grooves, tempo, swing |
 | FX | chorus, echo, shimmer reverb, air, glide, spread, volume |
 | PLAY | root, scale, octave for the note plates; arpeggiator; Launchkey pads and Learn |
 | STAGE | the porthole, large, for playing |
@@ -64,9 +64,18 @@ so you can loop a pad, switch presets and play a lead over it.
 
 ## BEAT: percussion
 
-Eight synthesized voices (kick, frame drum, wood block, shaker, hat, low and high hand drums, bell)
-and a 16-step pattern. Tap a step: off -> on -> accent -> off; drag along a row to paint.
-Tap a drum's name to select it (and hear it); LEVEL / TUNE / DECAY shape the selected drum.
+Eight rows and a 16-step pattern. Tap a step: off -> on -> accent -> off; drag along a row to paint.
+Tap a row's name to select it (and hear it); LEVEL / TUNE / DECAY shape the selected row.
+
+- **SOUND** picks what the selected row plays: 29 synthesized sounds in six groups (kicks, snares &
+  claps, woods, shakers & hats, hand drums, tonal), or a synth patch: *From a preset*, *From your
+  presets*, or *The sound you're playing now* (a snapshot of the current settings, tweaks included).
+- A patch row plays one note of that patch (held ~2 s, up to 3 s with its tail), captured when you
+  pick it. It starts on C3; on a patch row TUNE picks the note (C1 to C6) and letting go of TUNE
+  captures it again at that note. DECAY shortens it. A small brass dot marks patch rows.
+- **KITS** sets all eight rows at once (Organic, Hand Drums, Lo-Fi, Minimal, Temple, Rain Garden,
+  With Bell) and keeps your pattern. The default Organic kit has a raindrop where the bell was.
+- Sounds and captured patches are saved with the session and captured again when it reopens.
 GROOVES loads one of 15 ready-made patterns. In Ableton the drums follow Ableton's tempo and,
 while Ableton plays, its position; in the app TEMPO sets the speed.
 

@@ -35,7 +35,14 @@ public:
             k->setDoubleClickReturnValue (true, 0.5);
         }
         level.textFromValueFunction = swing.textFromValueFunction;
-        tune.textFromValueFunction  = [] (double v) { const int st = juce::roundToInt ((v - 0.5) * 24.0); return (st > 0 ? "+" : "") + juce::String (st) + " st"; };
+        // on a patch row TUNE picks the note the patch was captured at; elsewhere it's +/- 12 semitones
+        tune.textFromValueFunction  = [this] (double v)
+        {
+            if (isPatchRow (selected))
+                return juce::MidiMessage::getMidiNoteName (ZenProcessor::noteForTune ((float) v), true, true, 3);
+            const int st = juce::roundToInt ((v - 0.5) * 24.0);
+            return (st > 0 ? "+" : "") + juce::String (st) + " st";
+        };
         decay.textFromValueFunction = [] (double v) { return "x" + juce::String (std::pow (4.0, (v - 0.5) * 2.0), 2); };
 
         auto edit = [this] (std::function<void (zen::DrumSettings&)> fn)
@@ -46,7 +53,7 @@ public:
         swing.onValueChange  = [this, edit] { edit ([this] (auto& x) { x.swing = (float) swing.getValue(); }); };
         volume.onValueChange = [this, edit] { edit ([this] (auto& x) { x.volume = (float) volume.getValue(); }); };
         level.onValueChange  = [this, edit] { edit ([this] (auto& x) { x.level[(size_t) selected] = (float) level.getValue(); }); };
-        tune.onValueChange   = [this, edit] { edit ([this] (auto& x) { x.tune[(size_t) selected] = (float) tune.getValue(); }); };
+        tune.onValueChange   = [this, edit] { edit ([this] (auto& x) { x.tune[(size_t) selected] = (float) tune.getValue(); }); d = proc.getDrums(); repaint (labelArea()); };
         decay.onValueChange  = [this, edit] { edit ([this] (auto& x) { x.decay[(size_t) selected] = (float) decay.getValue(); }); };
         for (auto* k : { &tempo, &swing, &volume, &level, &tune, &decay })
         {
@@ -54,11 +61,24 @@ public:
             k->onDragEnd = [this] { proc.hitDrum (selected); };
         }
         tempo.onDragEnd = swing.onDragEnd = volume.onDragEnd = nullptr;
+        tune.onDragEnd = [this]
+        {
+            if (! isPatchRow (selected)) { proc.hitDrum (selected); return; }
+            // a patch row: capture the patch again at the new note, then let you hear it
+            proc.recaptureDrumPatch (selected);
+            hearWhenReady = selected;
+            if (setHint) setHint ("capturing " + proc.drumRowName (selected).toLowerCase() + " at "
+                                  + juce::MidiMessage::getMidiNoteName (ZenProcessor::noteForTune ((float) tune.getValue()), true, true, 3));
+        };
 
         previewBtn.showLed = false;
         previewBtn.setTriggeredOnMouseDown (true);
         previewBtn.onClick = [this] { proc.hitDrum (selected); };
         addAndMakeVisible (previewBtn);
+
+        for (auto* b : { &soundBtn, &kitsBtn }) { b->showLed = false; addAndMakeVisible (b); }
+        soundBtn.onClick = [this] { showSounds(); };
+        kitsBtn.onClick  = [this] { showKits(); };
 
         syncFromProcessor();
         startTimerHz (30);
@@ -73,11 +93,13 @@ public:
         volume.setBounds (300, 0, 70, 66);
         grooveBtn.setBounds (372, 2, 66, 56);
         clearBtn.setBounds (436, 2, 60, 56);
-        // bottom row: the selected drum
-        previewBtn.setBounds (196, 274, 60, 56);
-        level.setBounds (260, 270, 70, 66);
-        tune.setBounds (330, 270, 70, 66);
-        decay.setBounds (400, 270, 70, 66);
+        // bottom row: the selected row's sound
+        previewBtn.setBounds (152, 274, 58, 56);
+        soundBtn.setBounds (210, 274, 60, 56);
+        level.setBounds (270, 270, 66, 66);
+        tune.setBounds (336, 270, 66, 66);
+        decay.setBounds (402, 270, 66, 66);
+        kitsBtn.setBounds (474, 274, 58, 56);
     }
 
     void paint (juce::Graphics& g) override
@@ -104,9 +126,16 @@ public:
             const float y = grid.getY() + ch * (float) r;
             // row name (tap to select and hear it)
             const bool sel = r == selected;
-            theme::burnText (g, zen::drumName (r), { 0.0f, y, grid.getX() - 10.0f, ch }, juce::Justification::centredRight,
-                             theme::font (sel ? theme::FontKind::sansBold : theme::FontKind::sans, 10.5f, 0.12f),
+            const auto name = rowNames[(size_t) r];
+            const float fsz = name.length() > 10 ? 8.5f : (name.length() > 8 ? 9.5f : 10.5f);
+            theme::burnText (g, name, { -30.0f, y, grid.getX() - 10.0f + 30.0f, ch }, juce::Justification::centredRight,
+                             theme::font (sel ? theme::FontKind::sansBold : theme::FontKind::sans, fsz, 0.10f),
                              sel ? theme::burn : theme::burnSoft);
+            if (isPatchRow (r))   // a small brass dot: this row is a captured synth patch
+            {
+                g.setColour (theme::brass.withAlpha (0.9f));
+                g.fillEllipse (grid.getX() - 7.0f, y + ch * 0.5f - 2.0f, 4.0f, 4.0f);
+            }
             if (sel)
             {
                 g.setColour (theme::burn);
@@ -143,8 +172,16 @@ public:
         const juce::String bpmText = host > 1.0f ? "following Ableton: " + juce::String (host, 1) + " BPM"
                                                  : juce::String (juce::roundToInt (d.tempo)) + " BPM";
         theme::burnText (g, bpmText, infoArea().toFloat(), juce::Justification::centred, theme::font (theme::FontKind::sans, 10.5f, 0.14f));
-        theme::burnText (g, zen::drumName (selected), { 70.0f, 288.0f, 120.0f, 16.0f }, juce::Justification::centredRight,
-                         theme::font (theme::FontKind::sansBold, 11.5f, 0.18f));
+        const auto selName = rowNames[(size_t) selected];
+        theme::burnText (g, selName, { 20.0f, 284.0f, 128.0f, 16.0f }, juce::Justification::centredRight,
+                         theme::font (theme::FontKind::sansBold, selName.length() > 10 ? 9.5f : 11.5f, 0.14f));
+        const bool busy = proc.capturesRunning.load() > 0;
+        const juce::String sub = busy ? "capturing..."
+                               : isPatchRow (selected) ? "patch at " + juce::MidiMessage::getMidiNoteName (ZenProcessor::noteForTune (d.tune[(size_t) selected]), true, true, 3)
+                                                       : "row " + juce::String (selected + 1);
+        theme::burnText (g, sub,
+                         { 20.0f, 302.0f, 128.0f, 14.0f }, juce::Justification::centredRight,
+                         theme::font (theme::FontKind::sans, 9.0f, 0.14f), busy ? theme::burn : theme::burnSoft);
     }
 
     void mouseDown (const juce::MouseEvent& e) override
@@ -192,12 +229,29 @@ private:
     int selected = 0, paintRow = -1, paintValue = 1, lastStep = -2;
 
     SteelButton playBtn { "PLAY", 24.0f }, grooveBtn { "GROOVES", 20.0f }, clearBtn { "CLEAR", 20.0f },
-                previewBtn { "HEAR", 20.0f };
+                previewBtn { "HEAR", 20.0f }, soundBtn { "SOUND", 20.0f }, kitsBtn { "KITS", 20.0f };
+    std::array<juce::String, zen::numDrums> rowNames;
+    int hearWhenReady = -1;
+    bool wasBusy = false;
+
+    bool isPatchRow (int r) const { return d.sound[(size_t) r] == (int) zen::Sound::patch; }
+
+    void refreshNames()
+    {
+        bool changed = false;
+        for (int r = 0; r < zen::numDrums; ++r)
+        {
+            auto n = proc.drumRowName (r);
+            if (n != rowNames[(size_t) r]) { rowNames[(size_t) r] = n; changed = true; }
+        }
+        if (changed) repaint();
+    }
     WoodKnob tempo { "TEMPO", 34.0f }, swing { "SWING", 34.0f }, volume { "DRUMS", 34.0f },
              level { "LEVEL", 34.0f }, tune { "TUNE", 34.0f }, decay { "DECAY", 34.0f };
 
     juce::Rectangle<float> gridArea() const { return { 104.0f, 82.0f, 416.0f, 176.0f }; }
     juce::Rectangle<int> infoArea() const   { return { 90, 60, 420, 16 }; }
+    juce::Rectangle<int> labelArea() const  { return { 0, 280, 150, 40 }; }
 
     bool cellAt (juce::Point<float> p, int& r, int& k) const
     {
@@ -214,6 +268,8 @@ private:
         level.setValue (d.level[(size_t) selected], juce::dontSendNotification);
         tune.setValue (d.tune[(size_t) selected], juce::dontSendNotification);
         decay.setValue (d.decay[(size_t) selected], juce::dontSendNotification);
+        tune.updateText();
+        refreshNames();
         repaint();
     }
 
@@ -256,5 +312,116 @@ private:
         static float lastHost = -1.0f;
         if (std::abs (proc.hostTempo() - lastHost) > 0.05f) { lastHost = proc.hostTempo(); repaint (infoArea()); }
         playBtn.setLedLevel (d.playing ? (step % 4 == 0 ? 1.0f : 0.55f) : 0.0f);
+
+        refreshNames();
+        const bool busy = proc.capturesRunning.load() > 0;
+        if (busy != wasBusy)
+        {
+            wasBusy = busy;
+            repaint (labelArea());
+            if (! busy && hearWhenReady >= 0)
+            {
+                proc.hitDrum (hearWhenReady);   // the fresh capture is in: play it once
+                if (setHint) setHint (proc.drumRowName (hearWhenReady).toLowerCase() + " is on its row  -  TUNE picks the note");
+                hearWhenReady = -1;
+            }
+        }
+    }
+
+    //==========================================================================
+    enum MenuIds { idLibrary = 1, idFactory = 1000, idUser = 3000, idNow = 5000 };
+
+    void showSounds()
+    {
+        const int row = selected;
+        juce::PopupMenu m;
+        m.addSectionHeader ("Sound for row " + juce::String (row + 1));
+        const int cur = d.sound[(size_t) row];
+        for (auto& grp : zen::soundGroups())
+        {
+            juce::PopupMenu sub;
+            bool has = false;
+            for (int s : grp.sounds) { sub.addItem (idLibrary + s, juce::String (zen::soundName (s)).toLowerCase(), true, s == cur); has |= s == cur; }
+            m.addSubMenu (grp.name, sub, true, nullptr, has);
+        }
+        m.addSeparator();
+        m.addSectionHeader ("A synth patch, one note per hit");
+
+        const auto info = ZenProcessor::presetInfo();
+        juce::StringArray order;
+        for (auto& i : info) if (! order.contains (i.category) && i.category != "Init") order.add (i.category);
+        juce::PopupMenu factory;
+        for (auto& c : order)
+        {
+            juce::PopupMenu sub;
+            for (int i = 0; i < (int) info.size(); ++i)
+                if (info[(size_t) i].category == c) sub.addItem (idFactory + i, info[(size_t) i].name);
+            factory.addSubMenu (c, sub);
+        }
+        m.addSubMenu ("From a preset", factory);
+
+        const auto user = ZenProcessor::userPresets();
+        juce::PopupMenu mine;
+        for (int i = 0; i < user.size(); ++i) mine.addItem (idUser + i, user[i].getFileNameWithoutExtension());
+        m.addSubMenu ("From your presets", mine, user.size() > 0);
+        m.addItem (idNow, "The sound you're playing now (" + proc.currentPresetName() + ")");
+
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&soundBtn),
+                         [safe = juce::Component::SafePointer<BeatPanel> (this), row, info, user] (int r)
+                         {
+                             if (safe == nullptr || r <= 0) return;
+                             auto& self = *safe;
+                             if (r < idFactory)
+                             {
+                                 self.proc.setDrumSound (row, r - idLibrary);
+                                 self.afterSoundChange (row);
+                                 self.proc.hitDrum (row);
+                                 return;
+                             }
+                             ZenProcessor::PatchRecipe recipe;
+                             if (r >= idNow)       recipe = self.proc.snapshotOfCurrentSound();
+                             else if (r >= idUser) { recipe.kind = 2; recipe.file = user[r - idUser].getFullPathName(); recipe.name = user[r - idUser].getFileNameWithoutExtension(); }
+                             else                  { recipe.kind = 1; recipe.name = info[(size_t) (r - idFactory)].name; }
+                             self.capturePatch (row, std::move (recipe));
+                         });
+    }
+
+    void capturePatch (int row, ZenProcessor::PatchRecipe recipe)
+    {
+        // start each new patch on C3 with a natural length; TUNE moves the note afterwards
+        auto x = proc.getDrums();
+        if (x.sound[(size_t) row] != (int) zen::Sound::patch)
+        {
+            x.tune[(size_t) row] = ZenProcessor::tuneForNote (48);
+            x.decay[(size_t) row] = 0.5f;
+            proc.setDrums (x);
+        }
+        const auto name = recipe.name;
+        proc.captureDrumPatch (row, std::move (recipe));
+        hearWhenReady = row;
+        afterSoundChange (row);
+        if (setHint) setHint ("capturing " + name + " onto row " + juce::String (row + 1) + "...");
+    }
+
+    void afterSoundChange (int row)
+    {
+        d = proc.getDrums();
+        selectRow (row);
+    }
+
+    void showKits()
+    {
+        juce::PopupMenu m;
+        m.addSectionHeader ("Load a kit (all 8 rows; your pattern stays)");
+        const auto& ks = zen::kits();
+        for (int i = 0; i < (int) ks.size(); ++i) m.addItem (i + 1, ks[(size_t) i].name);
+        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&kitsBtn),
+                         [safe = juce::Component::SafePointer<BeatPanel> (this)] (int r)
+                         {
+                             if (safe == nullptr || r <= 0) return;
+                             safe->proc.loadKit (r - 1);
+                             safe->afterSoundChange (safe->selected);
+                             if (safe->setHint) safe->setHint (juce::String (zen::kits()[(size_t) (r - 1)].name) + " kit loaded");
+                         });
     }
 };

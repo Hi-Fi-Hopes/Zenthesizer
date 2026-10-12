@@ -56,11 +56,12 @@ namespace zen
             (void) Wavetables::get();   // build the tables up front, not on the audio thread
         }
 
-        void prepare (double sampleRate)
+        // lightweight: a throwaway engine used to capture a patch (no room for long loops)
+        void prepare (double sampleRate, bool lightweight = false)
         {
             fs = (float) sampleRate;
             chorus.prepare (fs); delay.prepare (fs); reverb.prepare (fs);
-            looper.prepare (fs);
+            looper.prepare (fs, lightweight ? 0.5f : 45.0f);
             drums.prepare (fs);
             drumL.assign (4096, 0.0f); drumR.assign (4096, 0.0f);
             for (auto& v : voices) { v.active = false; v.amp.reset(); v.noiseHP.setCutoff (300.0f, fs); v.noiseLP.setCutoff (7000.0f, fs); }

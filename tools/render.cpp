@@ -51,6 +51,54 @@ int main()
         proc.processBlock (buf, midi);
     }
 
+    // patch capture, end to end: a factory preset, a snapshot, and a state round trip
+    {
+        auto waitCaptures = [] (ZenProcessor& pr)
+        {
+            const double t = juce::Time::getMillisecondCounterHiRes();
+            do juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+            while ((pr.capturesRunning.load() > 0) && juce::Time::getMillisecondCounterHiRes() - t < 30000.0);
+            return juce::Time::getMillisecondCounterHiRes() - t;
+        };
+        auto rowEnergy = [&buf] (ZenProcessor& pr, int row)
+        {
+            juce::MidiBuffer none;
+            for (int b = 0; b < 400; ++b) pr.processBlock (buf, none);   // let the synth and any hit settle
+            pr.hitDrum (row);
+            double e = 0.0;
+            for (int b = 0; b < 100; ++b)
+            {
+                pr.processBlock (buf, none);
+                for (int k = 0; k < 512; ++k) e += buf.getSample (0, k) * buf.getSample (0, k);
+            }
+            return 10.0 * std::log10 (e / 51200.0 + 1e-12);
+        };
+        const auto infos = ZenProcessor::presetInfo();
+        ZenProcessor cap;   // a quiet one (the main one still has notes held)
+        cap.setPlayConfigDetails (0, 2, 48000.0, 512);
+        cap.prepareToPlay (48000.0, 512);
+        cap.setCurrentProgram (5);
+        std::printf ("silence: %.1f dB\n", [&] { juce::MidiBuffer none; double e = 0; for (int b = 0; b < 500; ++b) { cap.processBlock (buf, none); } for (int b = 0; b < 100; ++b) { cap.processBlock (buf, none); for (int k = 0; k < 512; ++k) e += buf.getSample (0, k) * buf.getSample (0, k); } return 10.0 * std::log10 (e / 51200.0 + 1e-12); }());
+        ZenProcessor::PatchRecipe fr; fr.kind = 1; fr.name = infos[12].name;
+        cap.captureDrumPatch (7, fr);
+        cap.captureDrumPatch (6, cap.snapshotOfCurrentSound());
+        const double ms = waitCaptures (cap);
+        std::printf ("captures: %.0f ms;  row 7 '%s' %.1f dB;  row 6 '%s' %.1f dB;  row 0 '%s' %.1f dB\n", ms,
+                     cap.drumRowName (7).toRawUTF8(), rowEnergy (cap, 7), cap.drumRowName (6).toRawUTF8(), rowEnergy (cap, 6),
+                     cap.drumRowName (0).toRawUTF8(), rowEnergy (cap, 0));
+        juce::MemoryBlock st; cap.getStateInformation (st);
+        ZenProcessor reopened;
+        reopened.setPlayConfigDetails (0, 2, 48000.0, 512);
+        reopened.prepareToPlay (48000.0, 512);
+        reopened.setStateInformation (st.getData(), (int) st.getSize());
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
+        waitCaptures (reopened);
+        std::printf ("reopened session (%d bytes): row 7 '%s' %.1f dB;  row 6 '%s' %.1f dB\n", (int) st.getSize(),
+                     reopened.drumRowName (7).toRawUTF8(), rowEnergy (reopened, 7), reopened.drumRowName (6).toRawUTF8(), rowEnergy (reopened, 6));
+        cap.setDrumSound (6, (int) zen::Sound::kalimba);
+        std::printf ("row 6 back to a library sound: '%s' %.1f dB\n", cap.drumRowName (6).toRawUTF8(), rowEnergy (cap, 6));
+        }
+
     // app icon: the slab with a burned "z" and a brass ring
     {
         auto icon = wood::render (512);
@@ -69,6 +117,11 @@ int main()
         juce::PNGImageFormat().writeImageToStream (icon, os);
     }
 
+    {   // show a patch row on the BEAT page
+        ZenProcessor::PatchRecipe fr; fr.kind = 1; fr.name = ZenProcessor::presetInfo()[3].name;
+        proc.captureDrumPatch (7, fr);
+        for (int i = 0; i < 50 && proc.capturesRunning.load() > 0; ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+    }
     const double t0 = juce::Time::getMillisecondCounterHiRes();
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     ed->setSize (980, 980);
