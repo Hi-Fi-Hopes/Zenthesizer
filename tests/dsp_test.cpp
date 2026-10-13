@@ -227,7 +227,7 @@ int main()
         r.eng.looper.requestLoop();                                  // close: 1 s loop, playing
         r.render (2400);
         CHECK (r.eng.looper.getState() == Looper::playing, "looper playing after the second press");
-        CHECK (std::abs (r.eng.looper.length() - 48000) < 600, "loop length ~1 s (%d)", r.eng.looper.length());
+        CHECK (std::abs (r.eng.looper.length() - 48000) < 1400, "loop length ~1 s (%d)", r.eng.looper.length());
         // "switch patch": silence the synth entirely; the loop must still sound
         r.s.aLevel = 0; r.s.bLevel = 0;
         r.L.clear(); r.R.clear();
@@ -388,6 +388,107 @@ int main()
         r.eng.drums.setSample (7, nullptr);
         r.render (96000);
         CHECK (finite (r.L), "a patch row without a sample stays silent");
+    }
+
+    // 16. seamless loops: a held pad wraps with no dip or jump, and overdubs taper instead of chopping
+    {
+        const float fs = 48000.0f;
+        Looper lp; lp.prepare (fs, 20.0f);
+        std::mt19937 rng (7);
+        std::uniform_real_distribution<float> ph (0.0f, 6.2831853f);
+        // a steady organ-like tone on 100 Hz: its level over any 20 ms (two periods) is exactly constant,
+        // and both sides of the loop point are the same waveform (the hardest case for a crossfade)
+        float freqs[40], phase[40];
+        for (int k = 0; k < 40; ++k) { freqs[k] = 100.0f * (float) (k % 8 + 1); phase[k] = ph (rng); }
+        long clock = 0;
+        auto padSample = [&] (float& l, float& r)
+        {
+            float v = 0.0f, w = 0.0f;
+            for (int k = 0; k < 40; ++k) { const float a = phase[k] + 6.2831853f * freqs[k] * (float) clock / fs; v += std::sin (a); w += std::sin (a + 0.3f * (float) k); }
+            l = 0.025f * v; r = 0.025f * w; ++clock;
+        };
+        std::vector<float> out;
+        // run n samples; pad = feed the pad, otherwise silence
+        auto run = [&] (int n, bool pad)
+        {
+            for (int done = 0; done < n; done += 256)
+            {
+                const int m = std::min (256, n - done);
+                float L[256], R[256];
+                for (int i = 0; i < m; ++i) { if (pad) padSample (L[i], R[i]); else { L[i] = R[i] = 0.0f; ++clock; } }
+                lp.process (L, R, m, 1.0f);
+                out.insert (out.end(), L, L + m);
+            }
+        };
+        auto maxStep = [] (const std::vector<float>& x, size_t a, size_t b)
+        {
+            float m = 0.0f; for (size_t i = a + 1; i < b; ++i) m = std::max (m, std::abs (x[i] - x[i - 1])); return m;
+        };
+        auto winRange = [] (const std::vector<float>& x, size_t a, size_t b, int w, float& lo, float& hi)
+        {
+            lo = 1.0e9f; hi = -1.0e9f;
+            for (size_t s0 = a; s0 + (size_t) w <= b; s0 += (size_t) w / 2)
+            {
+                double e = 0.0; for (int i = 0; i < w; ++i) e += x[s0 + (size_t) i] * x[s0 + (size_t) i];
+                const float db = 10.0f * std::log10 ((float) (e / w) + 1.0e-12f);
+                lo = std::min (lo, db); hi = std::max (hi, db);
+            }
+        };
+
+        run (48000, true);                    // the chord is already sounding
+        float padLo, padHi; winRange (out, 0, out.size(), 960, padLo, padHi);
+        out.clear();
+        lp.requestLoop(); run (110000, true); // record ~2.3 s
+        lp.requestLoop();                     // close while still holding
+        out.clear();
+        run (256, false);
+        const int len = lp.length();
+        out.clear();
+        run (len * 3, false);                 // let go: just the loop, three times round
+        const float padStep = maxStep (out, 1000, (size_t) len - 30000);
+        float lo, hi; winRange (out, 4800, out.size(), 960, lo, hi);   // (after the playback fade-in settles)
+        CHECK (hi - lo < (padHi - padLo) + 1.5f, "held pad loops with no dip at the loop point (20 ms level range %.2f dB, the pad itself %.2f dB)", hi - lo, padHi - padLo);
+        const float wrapStep = std::max (maxStep (out, (size_t) len - 2400, (size_t) len + 2400), maxStep (out, (size_t) (2 * len) - 2400, (size_t) (2 * len) + 2400));
+        CHECK (wrapStep < padStep * 1.5f, "no jump at the wrap (step %.4f, pad's own %.4f)", wrapStep, padStep);
+
+        // and a sound that's different on each side of the join (a noisy wash): the level holds too
+        {
+            Looper ln; ln.prepare (fs, 20.0f);
+            std::normal_distribution<float> nd (0.0f, 0.1f);
+            std::vector<float> o2;
+            auto run2 = [&] (int n, bool on)
+            {
+                for (int done = 0; done < n; done += 256)
+                {
+                    const int m = std::min (256, n - done);
+                    float L[256], R[256];
+                    for (int i = 0; i < m; ++i) { L[i] = on ? nd (rng) : 0.0f; R[i] = on ? nd (rng) : 0.0f; }
+                    ln.process (L, R, m, 1.0f);
+                    o2.insert (o2.end(), L, L + m);
+                }
+            };
+            run2 (48000, true);
+            float nLo, nHi; winRange (o2, 0, o2.size(), 960, nLo, nHi);
+            ln.requestLoop(); run2 (100000, true); ln.requestLoop(); run2 (256, false);
+            o2.clear(); run2 (ln.length() * 2, false);
+            float l2, h2; winRange (o2, 4800, o2.size(), 960, l2, h2);
+            CHECK (h2 - l2 < (nHi - nLo) + 1.0f, "a noisy wash loops with a steady level too (range %.2f dB, the sound itself %.2f dB)", h2 - l2, nHi - nLo);
+        }
+
+        // overdub: a fresh, silent 2 s loop, then a chord punched in and out while it keeps sounding
+        lp.requestClear(); run (256, false);
+        lp.requestLoop(); run (96000, false); lp.requestLoop(); run (256, false);
+        const int len2 = lp.length();
+        while (true) { out.clear(); run (256, false); if (lp.length() == len2 && out.size() && std::abs (out[0]) < 1.0f) break; }
+        lp.requestLoop(); run (48000, true);   // overdub 1 s of chord
+        lp.requestLoop(); run (48000, true);   // punch out but keep holding
+        run (len2, false);
+        out.clear(); run (len2 * 2, false);     // two passes of the loop alone
+        const float dubStep = maxStep (out, 0, out.size());
+        winRange (out, 0, out.size(), 960, lo, hi);
+        CHECK (dubStep < padStep * 1.5f && hi > -30.0f, "overdub punch in/out has no chop (max step %.4f, pad's own %.4f)", dubStep, padStep);
+        lp.requestUndo(); out.clear(); run (len2, false);
+        CHECK (peak (out) < 1.0e-6f, "UNDO takes the overdub back, taper included (peak %.6f)", peak (out));
     }
 
     std::printf (failures == 0 ? "\nALL PASSED\n" : "\n%d FAILED\n", failures);

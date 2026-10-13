@@ -60,6 +60,13 @@ so you can loop a pad, switch presets and play a lead over it.
 - **STOP:** stops (LOOP plays it again from the start). Pressed while recording, it closes the loop stopped.
 - **UNDO:** tap to take back the last overdub, hold to clear the loop.
 - **LOOP LVL** (bottom left): playback level. Loops last up to 45 s and aren't saved with the set.
+- **Seamless loop points.** The looper always keeps the last half second of what you played. When a
+  loop closes, its last half second blends into that, so the end flows straight into the start with no
+  gap or jump (without the drums it also trims a few ms so steady tones line up in phase). Best
+  results: have the chord already sounding when you press LOOP to start.
+- **Overdubs fade in and taper out.** Punching in fades in over ~80 ms; punching out keeps recording
+  for ~0.6 s while fading, so a chord you're still holding tapers off instead of being chopped at the
+  same spot every pass. Tapping LOOP again during the taper continues the same take (one UNDO).
 - With the BEAT drums running, recording starts and stops on bar lines (see BEAT).
 
 ## BEAT: percussion
