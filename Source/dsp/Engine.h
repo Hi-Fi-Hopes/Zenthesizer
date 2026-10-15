@@ -88,6 +88,10 @@ namespace zen
         void setUiBend (float b) noexcept  { uiBend.store (juce_clampBend (b)); }
         void setUiWheel (float w) noexcept { uiWheel.store (clamp01 (w)); uiWheelSeq.fetch_add (1); }
 
+        // for tests and the UI: a sounding voice by its key id ((channel << 8) | note), and the global bend
+        const Voice* findVoice (int id) const noexcept { for (auto& v : voices) if (v.active && v.id == id) return &v; return nullptr; }
+        float globalBendSemis() const noexcept { return bendSemis(); }
+
         // UI: press/release a plate with the mouse (pressure 0..1, or < 0 for released).
         void setUiPlate (int plate, float pressure) noexcept
         {
@@ -187,6 +191,12 @@ namespace zen
         uint32_t serial = 1;
 
         float wheel = 0.0f, chanAT = 0.0f, bend = 0.0f;   // bend: -1..1 from MIDI
+        // MPE: each member channel (2..16) carries one note's bend, pressure and slide
+        std::array<float, 17> chBend {}, chPress {}, chSlide {};
+        float slideAll = 0.0f;   // CC74 from a non-MPE controller moves every note's slide
+        bool isMember (int ch) const noexcept { return set->mpe > 0 && ch >= 2; }
+        static int channelOf (int id) noexcept { return id < 10000 ? (id >> 8) : 0; }
+        template <typename Fn> void forChannel (int ch, Fn fn) { for (auto& v : voices) if (v.active && channelOf (v.id) == ch) fn (v); }
         std::atomic<float> uiBend { 0.0f };               // -1..1 from the on-screen strip
         std::atomic<float> uiWheel { 0.0f };
         std::atomic<int> uiWheelSeq { 0 };
@@ -222,6 +232,7 @@ namespace zen
         {
             if (! set->platesFromPads) return -1;
             if (set->padChannel != 0 && set->padChannel != channel) return -1;
+            if (isMember (channel) && set->padChannel != channel) return -1;   // MPE notes are notes, not pads
             for (int p = 0; p < numPlates; ++p)
                 if (set->padNotes[(size_t) p] == note) return p;
             return -1;
@@ -236,7 +247,23 @@ namespace zen
                 display.inCount.fetch_add (1);
                 const int p = plateForNote (m.d1, ch);
                 if (p >= 0) plateDown (p, m.d2 / 127.0f, false);
-                else noteOn (keyId (ch, m.d1), (float) m.d1, m.d2 / 127.0f, -1);
+                else
+                {
+                    noteOn (keyId (ch, m.d1), (float) m.d1, m.d2 / 127.0f, -1);
+                    // the expression that arrived on this note's channel just before it
+                    const int id = keyId (ch, m.d1);
+                    for (auto& v : voices)
+                        if (v.active && v.id == id)
+                        {
+                            if (isMember (ch))
+                            {
+                                v.noteBend = v.noteBendTarget = chBend[(size_t) ch] * (float) set->mpe;
+                                v.pressTarget = chPress[(size_t) ch];
+                                v.slide = v.slideTarget = chSlide[(size_t) ch];
+                            }
+                            else v.slideTarget = slideAll;
+                        }
+                }
             }
             else if (type == 0x80 || (type == 0x90 && m.d2 == 0))
             {
@@ -251,11 +278,26 @@ namespace zen
                 if (p >= 0) setPlatePressure (p, v);
                 else setPressure (keyId (ch, m.d1), v);
             }
-            else if (type == 0xD0) chanAT = m.d1 / 127.0f;
-            else if (type == 0xE0) bend = juce_clampBend (((float) ((m.d2 << 7) | m.d1) - 8192.0f) / 8192.0f);
+            else if (type == 0xD0)
+            {
+                if (isMember (ch)) { chPress[(size_t) ch] = m.d1 / 127.0f; forChannel (ch, [&] (Voice& v) { v.pressTarget = m.d1 / 127.0f; }); }
+                else chanAT = m.d1 / 127.0f;
+            }
+            else if (type == 0xE0)
+            {
+                const float b = juce_clampBend (((float) ((m.d2 << 7) | m.d1) - 8192.0f) / 8192.0f);
+                if (isMember (ch)) { chBend[(size_t) ch] = b; forChannel (ch, [&] (Voice& v) { v.noteBendTarget = b * (float) set->mpe; }); }
+                else bend = b;
+            }
             else if (type == 0xB0)
             {
                 if (m.d1 == 1) wheel = m.d2 / 127.0f;
+                else if (m.d1 == 74)
+                {
+                    const float sv = m.d2 / 127.0f;
+                    if (isMember (ch)) { chSlide[(size_t) ch] = sv; forChannel (ch, [&] (Voice& v) { v.slideTarget = sv; }); }
+                    else { slideAll = sv; for (auto& v : voices) v.slideTarget = sv; }
+                }
                 else if (m.d1 == 64)
                 {
                     const bool on = m.d2 >= 64;
@@ -515,6 +557,7 @@ namespace zen
                 case Src::press: return v.press;
                 case Src::vel:   return v.vel;
                 case Src::key:   return clampf ((v.pitch - 60.0f) / 24.0f, -1.0f, 1.0f);
+                case Src::slide: return v.slide;
                 default:         return globalSrc (sr);
             }
         }
@@ -575,6 +618,8 @@ namespace zen
             v.e2.set (s.e2A, s.e2D, s.e2S, s.e2R, fs);
             v.e1.advance (n); v.e2.advance (n);
             v.press += (v.pressTarget - v.press) * (1.0f - std::exp (-(float) n / (0.015f * fs)));
+            v.slide += (v.slideTarget - v.slide) * (1.0f - std::exp (-(float) n / (0.015f * fs)));
+            v.noteBend += (v.noteBendTarget - v.noteBend) * (1.0f - std::exp (-(float) n / (0.003f * fs)));
 
             float m[numDst] {};
             for (auto& sl : s.slots)
@@ -586,7 +631,7 @@ namespace zen
             if (gs <= 0.0f) v.pitch = v.note;
             else v.pitch += (v.note - v.pitch) * (1.0f - std::exp (-(float) n / (gs * 0.4f * fs)));
 
-            const float pitchOffs = m[(int) Dst::pitch] * 12.0f + bendSemis();
+            const float pitchOffs = m[(int) Dst::pitch] * 12.0f + bendSemis() + v.noteBend;
             const float semisA = v.pitch + pitchOffs + tuneSemisSnapped (s.aTune) + m[(int) Dst::aTune] * 24.0f;
             const float semisB = v.pitch + pitchOffs;
             const float hzA = 440.0f * std::pow (2.0f, (semisA - 69.0f) / 12.0f);
@@ -641,6 +686,26 @@ namespace zen
             const TableView tview = (tableIndex == userTable && userNow != nullptr) ? userNow->view()
                                                                                      : Wavetables::get().view (std::min (numTables - 1, tableIndex));
 
+            // A in STRING mode: a plucked string (and a detuned twin when DETUNE is up)
+            const bool isString = s.aWave == WaveA::string;
+            float perS[2] {}, gS[2] {}, damp = 0.0f, buzz = 0.0f;
+            if (isString)
+            {
+                const float tone = std::min (1.0f, aShape / 0.66f);
+                buzz = clamp01 ((aShape - 0.66f) / 0.34f);
+                damp = 0.25f - 0.23f * tone;
+                const float t60 = 4.0f + 6.0f * tone + 4.0f * buzz;
+                for (int q = 0; q < 2; ++q)
+                {
+                    const float hz = hzA * ratA[q == 0 ? 0 : 2];
+                    perS[q] = fs / std::max (1.0f, hz);
+                    gS[q] = std::pow (10.0f, -3.0f / (std::max (1.0f, hz) * t60));
+                }
+                if (v.pluckPending)
+                    for (int q = 0; q < 2; ++q) v.str[q].pluck (perS[q], aShape, v.vel, v.noise);
+            }
+            v.pluckPending = false;
+
             const float k = res * 3.95f;
             const float driveGain = 1.0f + 6.0f * drive;
             const float driveComp = 1.0f / (1.0f + 1.6f * drive);
@@ -663,7 +728,14 @@ namespace zen
 
                 // Engine A
                 float aL = 0.0f, aR = 0.0f;
-                if (aG > 0.0001f)
+                if (isString)
+                {
+                    const float c0 = v.str[0].process (perS[0], damp, gS[0], buzz);
+                    const float c1 = side > 0.001f ? v.str[1].process (perS[1], damp, gS[1], buzz) : 0.0f;
+                    aL = (c0 + side * 0.55f * c1) * aNorm * aG * 3.0f;
+                    aR = (0.8f * c0 + side * 0.9f * c1) * aNorm * aG * 3.0f;
+                }
+                else if (aG > 0.0001f)
                 {
                     const float c0 = v.a[0].process (s.aWave, aShape, dtA[0]);
                     const float c1 = v.a[1].process (s.aWave, aShape, dtA[1]);

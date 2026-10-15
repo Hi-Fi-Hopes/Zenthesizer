@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include <map>
 #include "dsp/Maps.h"
 
 #if JUCE_ANDROID || JUCE_IOS
@@ -14,7 +15,6 @@ namespace
 
     juce::Point<float> pol (float r, float deg) { return theme::polar (centre, r, deg); }
 
-    const char* kSrcLabels[] = { "", "ENV1", "ENV2", "LFO1", "LFO2", "RAND", "PRESS", "VEL", "WHEEL", "AT" };
 }
 
 //==============================================================================
@@ -22,7 +22,7 @@ EngineBox::EngineBox (ZenProcessor& p, bool b) : proc (p), isB (b)
 {
     setPaintingIsUnclipped (true);
     const char* choiceId = isB ? ids::bTable : ids::aWave;
-    const juce::StringArray names = isB ? juce::StringArray { "AIR", "GLASS", "VOX", "REED", "OWN" } : juce::StringArray { "SAW", "SQR", "TRI", "SIN" };
+    const juce::StringArray names = isB ? juce::StringArray { "AIR", "GLASS", "VOX", "REED", "OWN" } : juce::StringArray { "SAW", "SQR", "TRI", "SIN", "STR" };
     for (int i = 0; i < names.size(); ++i)
     {
         selectors.push_back (std::make_unique<SteelButton> (names[i], 18.0f));
@@ -124,9 +124,31 @@ void EngineBox::paintScreenA (juce::Graphics& g, juce::Rectangle<float> r)
     juce::Path p;
     const int n = 160;
     float vals[n];
-    for (int i = 0; i < 40; ++i) osc.process ((zen::WaveA) wave, shape, 2.0f / (float) n);   // settle the feedback
-    osc.phase = std::fmod (phase, 1.0f);
-    for (int i = 0; i < n; ++i) vals[i] = osc.process ((zen::WaveA) wave, shape, 2.5f / (float) n);
+    if (wave == (int) zen::WaveA::string)
+    {
+        // a plucked string ringing down: brighter with SHAPE, a fizzing edge at the top of it
+        const float tone = std::min (1.0f, shape / 0.66f), buzz = juce::jlimit (0.0f, 1.0f, (shape - 0.66f) / 0.34f);
+        const float pluckAge = std::fmod (phase * 0.6f, 1.0f);
+        float pk = 1.0e-6f;
+        for (int i = 0; i < n; ++i)
+        {
+            const float x = (float) i / (float) n;
+            const float t = x * 3.0f + phase;
+            float y = 0.0f;
+            for (int h = 1; h <= 9; ++h)
+                y += std::pow (0.25f + 0.6f * tone, (float) (h - 1)) / (float) h * std::sin (juce::MathConstants<float>::twoPi * (float) h * t);
+            if (buzz > 0.0f && y > 0.35f) y += buzz * 0.5f * std::sin (juce::MathConstants<float>::twoPi * 23.0f * t);
+            vals[i] = y * std::exp (-2.2f * (x + pluckAge));
+            pk = std::max (pk, std::abs (vals[i]));
+        }
+        for (auto& v : vals) v /= pk * 1.1f;
+    }
+    else
+    {
+        for (int i = 0; i < 40; ++i) osc.process ((zen::WaveA) wave, shape, 2.0f / (float) n);   // settle the feedback
+        osc.phase = std::fmod (phase, 1.0f);
+        for (int i = 0; i < n; ++i) vals[i] = osc.process ((zen::WaveA) wave, shape, 2.5f / (float) n);
+    }
     for (int i = 0; i < n; ++i)
     {
         const float x = r.getX() + r.getWidth() * (float) i / (float) (n - 1);
@@ -492,11 +514,15 @@ Content::Content (ZenProcessor& p)
         };
         resetPadsBtn.onClick = [this] { proc.resetPadNotes(); };
         combo (bendBox, { "bend 1", "bend 2", "bend 3", "bend 4", "bend 5", "bend 7", "bend 12", "bend 24" }, ids::bendRange, { 664, 490, 84, 24 });
+        combo (mpeBox, { "MPE off", "MPE, bend 12", "MPE, bend 24", "MPE, bend 48", "MPE, bend 96" }, ids::mpe, { 180, 490, 106, 24 });
+        mpeBox.setTooltip ("MPE controllers: each note on its own channel (2-16) bends, presses and slides by itself. "
+                           "Pads only play plates on the pad channel you pick while MPE is on.");
 
         pageLabels.push_back ({ play, "NOTE PLATES", { 443, 252 } });
         pageLabels.push_back ({ play, "ARPEGGIATOR", { 470, 350 } });
         pageLabels.push_back ({ play, "LAUNCHKEY PADS", { 470, 460 } });
         pageLabels.push_back ({ play, "PITCH BEND RANGE", { 706, 524 } });
+        pageLabels.push_back ({ play, "MPE CONTROLLER", { 233, 524 } });
         pageLabels.push_back ({ play, "default: pads C1-B1 play plates 1-12, C2-D#2 play A-D", { 490, 562 } });
         pageLabels.push_back ({ play, "to remap: LEARN, click a plate, then hit a pad", { 490, 582 } });
     }
@@ -565,16 +591,18 @@ void Content::setupSynthPage()
     }
     mainKnobs[3]->setDoubleClickReturnValue (true, 0.5);
 
-    for (int i = 0; i < 9; ++i)
+    for (int i = 0; i < numModButtons; ++i)
     {
-        modButtons[(size_t) i] = std::make_unique<SteelButton> (kSrcLabels[i + 1], 22.0f);
+        const int src = srcForButton (i);
+        modButtons[(size_t) i] = std::make_unique<SteelButton> (ZenProcessor::srcShortNames()[src], 22.0f);
         auto& b = *modButtons[(size_t) i];
-        b.ledColour = theme::srcColour (i + 1);
+        b.ledColour = theme::srcColour (src);
         addAndMakeVisible (b);
-        const float a = -60.0f + 15.0f * (float) i;
+        const float a = -60.0f + 120.0f / (float) (numModButtons - 1) * (float) i;
         place (b, pol (255.0f, a), 52.0f, 54.0f, a, 23.0f);
-        b.onClick = [this, i] { arm (i + 1); };
-        b.setTooltip ("Click to assign " + ZenProcessor::srcNames()[i + 1] + ": then drag any knob with a ring to set how much it moves it.");
+        b.onClick = [this, src] { arm (src); };
+        b.setTooltip ("Click to assign " + ZenProcessor::srcNames()[src] + ": then drag any knob with a ring to set how much it moves it."
+                      + (src == (int) zen::Src::slide ? juce::String (" (SLIDE is CC74: the up-down axis on an MPE controller)") : juce::String()));
         pageComps[synth].push_back (&b);
     }
 
@@ -830,56 +858,103 @@ void Content::paint (juce::Graphics& g)
 
 void Content::mouseDown (const juce::MouseEvent& e)
 {
-    if (e.eventComponent == &presetHit) { showPresetMenu(); return; }
+    if (e.eventComponent == &presetHit) return;   // the preset menu opens on release (see mouseUp)
     if (e.eventComponent == this && armedSrc != 0) arm (armedSrc);   // click on bare wood: done assigning
 }
 
+void Content::mouseUp (const juce::MouseEvent& e)
+{
+    if (e.eventComponent == &presetHit && presetHit.getLocalBounds().contains (e.getPosition()) && ! e.mouseWasDraggedSinceMouseDown())
+        showPresetMenu();
+}
+
+// Factory presets live in folders by category ("World/Asia" is a folder inside a folder).
 void Content::showPresetMenu()
 {
-    juce::PopupMenu menu;
+    enum { idSave = 900, idOpening = 901, idOpeningReset = 902, idUser = 1000, idDelete = 2000 };
     const auto info = ZenProcessor::presetInfo();
     const auto current = proc.currentPresetName();
-    juce::StringArray order;
-    for (auto& i : info) if (! order.contains (i.category)) order.add (i.category);
-    for (auto& c : order)
+
+    struct Folder { juce::String name; juce::PopupMenu menu; bool ticked = false; std::vector<int> order; };
+    std::vector<Folder> folders;   // top level, in first-seen order
+    std::map<juce::String, std::vector<std::pair<juce::String, juce::PopupMenu>>> subs;   // "World" -> [("Asia", menu)]
+    std::map<juce::String, bool> subTicked;
+    auto folderFor = [&folders] (const juce::String& n) -> Folder&
     {
-        if (c == "Init") { menu.addItem (1, "Init", true, current == "Init"); continue; }
-        menu.addSectionHeader (c);
-        for (int i = 0; i < (int) info.size(); ++i)
-            if (info[(size_t) i].category == c) menu.addItem (i + 1, info[(size_t) i].name, true, info[(size_t) i].name == current);
+        for (auto& f : folders) if (f.name == n) return f;
+        folders.push_back ({ n, {}, false, {} });
+        return folders.back();
+    };
+
+    juce::PopupMenu menu;
+    for (int i = 0; i < (int) info.size(); ++i)
+    {
+        const auto& pi = info[(size_t) i];
+        const bool on = pi.name == current;
+        if (pi.category == "Init") continue;
+        const auto top = pi.category.upToFirstOccurrenceOf ("/", false, false);
+        const auto sub = pi.category.fromFirstOccurrenceOf ("/", false, false);
+        auto& f = folderFor (top);
+        if (on) f.ticked = true;
+        if (sub.isEmpty()) { f.menu.addItem (i + 1, pi.name, true, on); continue; }
+        auto& list = subs[top];
+        auto it = std::find_if (list.begin(), list.end(), [&sub] (auto& pr) { return pr.first == sub; });
+        if (it == list.end()) { list.push_back ({ sub, {} }); it = std::prev (list.end()); }
+        it->second.addItem (i + 1, pi.name, true, on);
+        if (on) subTicked[top + "/" + sub] = true;
     }
+    menu.addSectionHeader ("Presets");
+    for (auto& f : folders)
+    {
+        for (auto& [subName, subMenu] : subs[f.name])
+            f.menu.addSubMenu (subName, subMenu, true, nullptr, subTicked[f.name + "/" + subName]);
+        menu.addSubMenu (f.name, f.menu, true, nullptr, f.ticked);
+    }
+    menu.addItem (1, "Init", true, current == "Init");
 
     const auto user = ZenProcessor::userPresets();
-    menu.addSectionHeader ("Your presets");
-    juce::PopupMenu del;
+    juce::PopupMenu mine, del;
     for (int i = 0; i < user.size(); ++i)
     {
-        menu.addItem (1000 + i, user[i].getFileNameWithoutExtension(), true, user[i].getFileNameWithoutExtension() == current);
-        del.addItem (2000 + i, user[i].getFileNameWithoutExtension());
+        mine.addItem (idUser + i, user[i].getFileNameWithoutExtension(), true, user[i].getFileNameWithoutExtension() == current);
+        del.addItem (idDelete + i, user[i].getFileNameWithoutExtension());
     }
-    menu.addItem (900, "Save current sound as...");
+    menu.addSeparator();
+    menu.addSubMenu ("Your presets", mine, user.size() > 0);
+    menu.addItem (idSave, "Save current sound as...");
     if (user.size() > 0) menu.addSubMenu ("Delete one of yours", del);
 
-    menu.setLookAndFeel (&lnf);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&presetHit).withMaximumNumColumns (3),
-                        [safe = juce::Component::SafePointer<Content> (this), user] (int r)
-                        {
-                            if (safe == nullptr || r <= 0) return;
-                            auto& self = *safe;
-                            if (r == 900) { self.savePresetAs(); return; }
-                            if (r >= 2000)
-                            {
-                                if (juce::isPositiveAndBelow (r - 2000, user.size())) user[r - 2000].deleteFile();
-                                self.showHint ("deleted");
-                                return;
-                            }
-                            if (r >= 1000)
-                            {
-                                if (juce::isPositiveAndBelow (r - 1000, user.size())) self.proc.loadUserPreset (user[r - 1000]);
-                            }
-                            else self.proc.setCurrentProgram (r - 1);
-                            self.repaint();
-                        });
+    menu.addSeparator();
+    const auto opening = proc.openingSoundName();
+    menu.addSectionHeader ("Opening sound: " + (opening.isNotEmpty() ? opening : juce::String ("Temple Mist (default)")));
+    menu.addItem (idOpening, "Open new Zenthesizers with this sound (" + current + ")");
+    menu.addItem (idOpeningReset, "Back to the default opening sound", opening.isNotEmpty());
+
+    showMenu (menu, presetHit, [safe = juce::Component::SafePointer<Content> (this), user] (int r)
+    {
+        if (safe == nullptr || r <= 0) return;
+        auto& self = *safe;
+        if (r == idSave) { self.savePresetAs(); return; }
+        if (r == idOpening)
+        {
+            self.showHint (self.proc.setOpeningSound() ? "new Zenthesizers will open with " + self.proc.openingSoundName()
+                                                       : "couldn't save the opening sound");
+            return;
+        }
+        if (r == idOpeningReset) { self.proc.clearOpeningSound(); self.showHint ("new Zenthesizers open with Temple Mist"); return; }
+        if (r >= idDelete)
+        {
+            if (juce::isPositiveAndBelow (r - idDelete, user.size())) user[r - idDelete].deleteFile();
+            self.showHint ("deleted");
+            return;
+        }
+        if (r >= idUser)
+        {
+            if (juce::isPositiveAndBelow (r - idUser, user.size())) self.proc.loadUserPreset (user[r - idUser]);
+        }
+        else self.proc.setCurrentProgram (r - 1);
+        self.repaint();
+    });
 }
 
 void Content::savePresetAs()
@@ -1010,10 +1085,11 @@ void Content::timerCallback()
     }
 
     if (page == synth)
-        for (int i = 0; i < 9; ++i)
+        for (int i = 0; i < numModButtons; ++i)
         {
-            float v = std::abs (d.src[(size_t) i + 1].load());
-            if (armedSrc == i + 1) v = 0.65f + 0.35f * std::sin ((float) now * 0.008f);
+            const int src = srcForButton (i);
+            float v = std::abs (d.src[(size_t) src].load());
+            if (armedSrc == src) v = 0.65f + 0.35f * std::sin ((float) now * 0.008f);
             modButtons[(size_t) i]->setLedLevel (v);
         }
 
@@ -1055,6 +1131,7 @@ ZenEditor::ZenEditor (ZenProcessor& p) : AudioProcessorEditor (p), content (p)
     for (auto* b : { &midiBtn, &audioBtn })
     {
         b->showLed = false;
+        b->labelColour = theme::bone;
         addAndMakeVisible (b);
     }
     midiBtn.onClick = []
@@ -1068,6 +1145,7 @@ ZenEditor::ZenEditor (ZenProcessor& p) : AudioProcessorEditor (p), content (p)
             holder->showAudioSettingsDialog();
     };
     fitBtn.showLed = false;
+    fitBtn.labelColour = theme::bone;
     addChildComponent (fitBtn);
     fitBtn.onClick = [this] { zoom = 1.0f; applyZoom (true); };
     juce::Desktop::getInstance().addGlobalMouseListener (&gestures);
@@ -1075,9 +1153,26 @@ ZenEditor::ZenEditor (ZenProcessor& p) : AudioProcessorEditor (p), content (p)
    #else
     constrainer.setFixedAspectRatio (1.0);
     constrainer.setSizeLimits (560, 560, 1400, 1400);
+    for (auto* b : { &fullBtn, &returnBtn }) { b->showLed = false; b->labelColour = theme::bone; }
+    addAndMakeVisible (fullBtn);
+    addChildComponent (returnBtn);
+    fullBtn.setTooltip ("Fill the screen (Esc comes back)");
+    fullBtn.onClick = [this] { setFullscreen (true); };
+    returnBtn.onClick = [this] { setFullscreen (false); };
    #endif
     setConstrainer (&constrainer);
     setSize (860, 860);
+}
+
+void ZenEditor::paint (juce::Graphics& g)
+{
+    g.fillAll (theme::table);
+   #if ! (JUCE_ANDROID || JUCE_IOS)
+    if (full != nullptr)
+        theme::burnText (g, "Zenthesizer is fullscreen  -  press Esc or BACK there, or tap below",
+                         getLocalBounds().toFloat().withSizeKeepingCentre ((float) getWidth() - 40.0f, 30.0f).translated (0.0f, -50.0f),
+                         juce::Justification::centred, theme::font (theme::FontKind::sans, 14.0f, 0.1f), theme::bone);
+   #endif
 }
 
 ZenEditor::~ZenEditor()
@@ -1090,6 +1185,11 @@ ZenEditor::~ZenEditor()
 
 void ZenEditor::resized()
 {
+   #if ! (JUCE_ANDROID || JUCE_IOS)
+    fullBtn.setBounds (8, 8, 58, 52);
+    returnBtn.setBounds (getLocalBounds().withSizeKeepingCentre (150, 70).translated (0, 10));
+    if (full != nullptr) return;   // the slab is in the fullscreen window
+   #endif
     const float side = (float) std::min (getWidth(), getHeight());
     const float oldBase = baseScale;
     baseScale = side / (float) designSize;
@@ -1147,6 +1247,73 @@ void ZenEditor::zoomAround (juce::Point<float> editorPos, float newZoom, juce::P
     zoom = juce::jlimit (1.0f, 4.0f, newZoom);
     origin = editorPos - anchorContent * (baseScale * zoom);
 }
+
+#if ! (JUCE_ANDROID || JUCE_IOS)
+ZenEditor::FullWindow::FullWindow (ZenEditor& e) : ed (e)
+{
+    setOpaque (true);
+    setWantsKeyboardFocus (true);
+    backBtn.showLed = false;
+    backBtn.labelColour = theme::bone;
+    backBtn.setTooltip ("Back to the plugin window (Esc)");
+    backBtn.onClick = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<ZenEditor> (&ed)] { if (safe != nullptr) safe->setFullscreen (false); }); };
+    addAndMakeVisible (backBtn);
+}
+
+void ZenEditor::FullWindow::resized()
+{
+    const float side = (float) std::min (getWidth(), getHeight());
+    const float k = side / (float) designSize;
+    ed.content.setTransform (juce::AffineTransform::scale (k).translated (((float) getWidth() - side) * 0.5f, ((float) getHeight() - side) * 0.5f));
+    float physical = 1.0f;
+    if (auto* disp = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds())) physical = (float) disp->scale;
+    ed.content.setRenderScale (k * std::max (1.0f, physical));
+    const int bw = juce::roundToInt (70.0f * std::max (1.0f, k)), bh = juce::roundToInt (64.0f * std::max (1.0f, k));
+    backBtn.dome = 26.0f * std::max (1.0f, k);
+    backBtn.setBounds (getWidth() - bw - 12, 12, bw, bh);
+    backBtn.toFront (false);
+}
+
+bool ZenEditor::FullWindow::keyPressed (const juce::KeyPress& k)
+{
+    if (k == juce::KeyPress::escapeKey) { backBtn.onClick(); return true; }
+    return false;
+}
+
+void ZenEditor::setFullscreen (bool on)
+{
+    if (on == (full != nullptr)) return;
+    if (on)
+    {
+        const auto* disp = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds());
+        if (disp == nullptr) disp = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+        if (disp == nullptr) return;
+        full = std::make_unique<FullWindow> (*this);
+        full->setBounds (disp->logicalBounds.toNearestInt());
+        full->addAndMakeVisible (content);            // moves the slab out of the plugin window
+        content.setBounds (0, 0, designSize, designSize);
+        full->resized();
+        full->setName ("Zenthesizer");
+        full->addToDesktop (juce::ComponentPeer::windowAppearsOnTaskbar);
+        full->setVisible (true);
+        full->toFront (true);
+        full->grabKeyboardFocus();
+        fullBtn.setVisible (false);
+        returnBtn.setVisible (true);
+    }
+    else
+    {
+        addAndMakeVisible (content);                  // back into the plugin window
+        content.setBounds (0, 0, designSize, designSize);
+        full.reset();
+        fullBtn.setVisible (true);
+        returnBtn.setVisible (false);
+        resized();
+        fullBtn.toFront (false);
+    }
+    repaint();
+}
+#endif
 
 #if JUCE_ANDROID || JUCE_IOS
 // Zoom only ever comes from bare wood: two fingers on the wood pinch, one finger on the wood

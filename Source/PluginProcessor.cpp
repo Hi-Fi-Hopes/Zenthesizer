@@ -24,11 +24,11 @@ namespace
 juce::StringArray ZenProcessor::srcNames()
 {
     return { "None", "Env 1", "Env 2", "LFO 1", "LFO 2", "Random", "Pressure", "Velocity", "Mod Wheel", "Channel Pressure",
-             "Plate A", "Plate B", "Plate C", "Plate D", "Key" };
+             "Plate A", "Plate B", "Plate C", "Plate D", "Key", "Slide (MPE)" };
 }
 juce::StringArray ZenProcessor::srcShortNames()
 {
-    return { "-", "ENV1", "ENV2", "LFO1", "LFO2", "RAND", "PRESS", "VEL", "WHEEL", "AT", "A", "B", "C", "D", "KEY" };
+    return { "-", "ENV1", "ENV2", "LFO1", "LFO2", "RAND", "PRESS", "VEL", "WHEEL", "AT", "A", "B", "C", "D", "KEY", "SLIDE" };
 }
 juce::StringArray ZenProcessor::dstNames()
 {
@@ -160,6 +160,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ZenProcessor::createLayout()
     knob (ids::arpGate, "Arp Gate", d.arpGate);
     toggle (ids::arpHold, "Arp Hold", false);
     choice (ids::bendRange, "Bend Range", { "1", "2", "3", "4", "5", "7", "12", "24" }, 1);
+    choice (ids::mpe, "MPE", { "Off", "On, bend 12", "On, bend 24", "On, bend 48", "On, bend 96" }, 0);
 
     return layout;
 }
@@ -240,7 +241,9 @@ ZenProcessor::ZenProcessor (bool lightweightCopy)
     drumSettings.playing = false;
     ++drumVersion;
 
-    setCurrentProgram (1);   // open on the first real preset
+    setCurrentProgram (1);   // open on the first real preset...
+    if (! lightweight && openingFile().existsAsFile())
+        loadUserPreset (openingFile());   // ...or the opening sound you picked
 }
 
 //==============================================================================
@@ -284,14 +287,17 @@ void ZenProcessor::setDrumSound (int row, int sound)
     ++drumVersion;
 }
 
-void ZenProcessor::loadKit (int index)
+void ZenProcessor::loadKit (int index, bool keepPatchRows)
 {
     if (! juce::isPositiveAndBelow (index, (int) zen::kits().size())) return;
-    for (int r = 0; r < zen::numDrums; ++r) setDrumSound (r, zen::kits()[(size_t) index].sounds[(size_t) r]);
+    const auto before = getDrums();
+    for (int r = 0; r < zen::numDrums; ++r)
     {
+        if (keepPatchRows && before.sound[(size_t) r] == (int) zen::Sound::patch) continue;
+        setDrumSound (r, zen::kits()[(size_t) index].sounds[(size_t) r]);
         const std::lock_guard<std::mutex> l (drumLock);
-        drumSettings.tune.fill (0.5f);
-        drumSettings.decay.fill (0.5f);
+        drumSettings.tune[(size_t) r] = 0.5f;
+        drumSettings.decay[(size_t) r] = 0.5f;
     }
     ++drumVersion;
 }
@@ -537,6 +543,26 @@ bool ZenProcessor::saveUserPreset (const juce::String& name)
     return true;
 }
 
+bool ZenProcessor::setOpeningSound()
+{
+    juce::MemoryBlock mb;
+    snapshotting = true;   // no captured drum patches in it
+    getStateInformation (mb);
+    snapshotting = false;
+    auto xml = getXmlFromBinary (mb.getData(), (int) mb.getSize());
+    if (xml == nullptr) return false;
+    xml->setAttribute ("presetName", currentPresetName());
+    dataFolder().createDirectory();
+    return xml->writeTo (openingFile());
+}
+
+juce::String ZenProcessor::openingSoundName()
+{
+    if (! openingFile().existsAsFile()) return {};
+    if (auto xml = juce::XmlDocument::parse (openingFile())) return xml->getStringAttribute ("presetName", "your sound");
+    return {};
+}
+
 bool ZenProcessor::loadUserPreset (const juce::File& f)
 {
     auto xml = juce::XmlDocument::parse (f);
@@ -549,7 +575,7 @@ bool ZenProcessor::loadUserPreset (const juce::File& f)
 // Applies a saved state. includePlaySettings = false keeps your scale, pads, etc. (loading a preset).
 void ZenProcessor::applyState (const juce::ValueTree& tree, bool includePlaySettings)
 {
-    static const juce::StringArray playIds { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre, ids::bendRange };
+    static const juce::StringArray playIds { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre, ids::bendRange, ids::mpe };
     if (includePlaySettings)
     {
         apvts.replaceState (tree);
@@ -604,7 +630,7 @@ void ZenProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 zen::Settings ZenProcessor::readSettings() const
 {
     zen::Settings s;
-    s.aWave = (zen::WaveA) juce::jlimit (0, 3, iv (ids::aWave));
+    s.aWave = (zen::WaveA) juce::jlimit (0, 4, iv (ids::aWave));
     s.aTune = v (ids::aTune); s.aDetune = v (ids::aDetune); s.aShape = v (ids::aShape); s.aLevel = v (ids::aLevel);
     s.bTable = juce::jlimit (0, 3, iv (ids::bTable));
     s.bPos = v (ids::bPos); s.bWarp = v (ids::bWarp); s.bUnison = v (ids::bUnison); s.bLevel = v (ids::bLevel);
@@ -637,6 +663,8 @@ zen::Settings ZenProcessor::readSettings() const
     {
         static const float ranges[] = { 1, 2, 3, 4, 5, 7, 12, 24 };
         s.bendRange = ranges[juce::jlimit (0, 7, iv (ids::bendRange))];
+        static const int mpeRanges[] = { 0, 12, 24, 48, 96 };
+        s.mpe = mpeRanges[juce::jlimit (0, 4, iv (ids::mpe))];
     }
     s.loopLevel = loopLevel.load();
     s.bpm = hostBpm.load();
@@ -763,7 +791,7 @@ void ZenProcessor::setCurrentProgram (int index)
     };
 
     // Defaults first. Play settings (scale, root, octave, pads) are the player's, so they stay.
-    static const juce::StringArray keep { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre, ids::bendRange };
+    static const juce::StringArray keep { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre, ids::bendRange, ids::mpe };
     for (auto* param : getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (param))
         {

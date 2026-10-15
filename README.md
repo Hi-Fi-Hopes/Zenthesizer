@@ -7,6 +7,9 @@ Built with JUCE. GitHub builds the Windows `.vst3` on every push to `main`.
 
 - **Engine A (analog):** saw, square, triangle or sine, three detunable oscillators per voice.
   Shape softens the saw, sets the square's pulse width, folds the triangle, or adds self-FM to the sine.
+- **STR (Engine A):** a plucked physical string. SHAPE runs from soft nylon to bright steel, and its
+  top third adds a sitar-style buzzing bridge. DETUNE adds a second, slightly detuned string (paired
+  courses like a mandolin or santoor). Keep SUSTAIN up and the string rings and dies away by itself.
 - **Engine B (wavetable):** four tables (Air, Glass, Vox, Reed), eight frames each, plus **Own** (your sandbox).
   Position scans the frames, Warp bends the phase, Unison stacks up to five detuned copies.
 - **Air:** breath noise.
@@ -34,6 +37,34 @@ Built with JUCE. GitHub builds the Windows `.vst3` on every push to `main`.
 - By default pad notes C1-B1 (36-47) play plates 1-12 and C2-D#2 (48-51) play A-D.
   If your pads send other notes: PLAY tab, LEARN, click a plate, hit a pad.
 - You can also click the plates; drag up while holding for more pressure.
+
+## Presets
+
+204 factory presets in folders: Ethereal, Keys, Bells & Plucks, Textures & Bass, Leads, Strings,
+Brass & Horns, World (Asia, India & Middle East, Africa, Europe & Celtic, Americas & Islands),
+Atmospheres, Lo-Fi, Choirs & Voices, Mallets, Drones & Bass, Arps & Motion, MPE Expressive and
+Cinematic. Click the preset name to open the menu; the arrows beside it step through them all.
+The world instruments are synthesized impressions (the plucked ones use STR), not recordings.
+Several plucked presets bend up when you press harder on a pad (Koto, Guzheng, Oud, Sitar).
+
+**Opening sound:** in the preset menu, *Open new Zenthesizers with this sound* saves what you're
+playing now (tweaks included) as the sound every new Zenthesizer starts with. *Back to the default
+opening sound* undoes it. A saved Ableton set still reopens with whatever it was using.
+
+**FULL** (top-left corner) fills the screen with the slab, centred. Esc or BACK brings it back.
+
+The presets are generated: the second batch lives in `tools/make_presets.py`, which writes
+`Source/PresetsMore.h` (run `python3 tools/make_presets.py` after editing it).
+
+## MPE
+
+PLAY page > MPE CONTROLLER: set it to the per-note bend range your controller uses (48 is the usual
+default). Each note then gets its own pitch bend, pressure (PRESS) and slide (SLIDE, CC74, the
+up-down axis), on channels 2 to 16; channel 1 still carries the normal bend and mod wheel.
+The MPE Expressive presets are built around pressure and slide; any preset that uses PRESS reacts
+to MPE pressure. While MPE is on, Launchkey pads play plates only on the pad channel you pick, so
+set that (for example ch 10) and, if your MPE controller can, keep its notes off that channel.
+Without MPE, CC74 from any controller moves SLIDE for every note.
 
 ## Pitch and mod
 
@@ -83,7 +114,9 @@ Tap a row's name to select it (and hear it); LEVEL / TUNE / DECAY shape the sele
 - **KITS** sets all eight rows at once (Organic, Hand Drums, Lo-Fi, Minimal, Temple, Rain Garden,
   With Bell) and keeps your pattern. The default Organic kit has a raindrop where the bell was.
 - Sounds and captured patches are saved with the session and captured again when it reopens.
-GROOVES loads one of 15 ready-made patterns. In Ableton the drums follow Ableton's tempo and,
+GROOVES loads one of 29 ready-made patterns, with folders of Lo-Fi (swung, 70-90 BPM) and Ambient
+(sparse and slow) grooves. Each of those was written for a kit; with *Switch to the kit each groove was
+written for* ticked (the default) the kit comes along, leaving any rows that hold a synth patch alone. In Ableton the drums follow Ableton's tempo and,
 while Ableton plays, its position; in the app TEMPO sets the speed.
 
 The drums are separate from the presets (changing sound doesn't change the beat) and play after

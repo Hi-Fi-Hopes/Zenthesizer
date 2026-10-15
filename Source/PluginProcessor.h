@@ -54,6 +54,7 @@ namespace ids
     inline constexpr const char* arpRate = "arpRate"; inline constexpr const char* arpOctaves = "arpOctaves";
     inline constexpr const char* arpGate = "arpGate"; inline constexpr const char* arpHold = "arpHold";
     inline constexpr const char* bendRange = "bendRange";
+    inline constexpr const char* mpe = "mpe";
 
     inline juce::String slotSrc (int i) { return "slot" + juce::String (i + 1) + "Src"; }
     inline juce::String slotDst (int i) { return "slot" + juce::String (i + 1) + "Dst"; }
@@ -90,7 +91,7 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
-    static juce::StringArray waveNames()     { return { "Saw", "Square", "Triangle", "Sine" }; }
+    static juce::StringArray waveNames()     { return { "Saw", "Square", "Triangle", "Sine", "String" }; }
     static juce::StringArray tableNames()    { return { "Air", "Glass", "Vox", "Reed", "Own" }; }
     static juce::StringArray lfoShapeNames() { return { "Sine", "Triangle", "Saw", "Square", "Drift" }; }
     static juce::StringArray srcNames();
@@ -118,7 +119,7 @@ public:
     void loadGroove (int index);
     void hitDrum (int drum)                     { engine.drums.requestHit (drum); }
     void setDrumSound (int row, int sound);     // a sound from the library (forgets any patch on that row)
-    void loadKit (int index);
+    void loadKit (int index, bool keepPatchRows = false);
 
     // A synth patch captured onto a grid row as a one-shot, at the note set by the row's TUNE.
     struct PatchRecipe
@@ -170,6 +171,11 @@ public:
     static juce::File dataFolder();                      // .../Zenthesizer
     static juce::File wavetableFolder()                  { return dataFolder().getChildFile ("Wavetables"); }
     static juce::File presetFolder()                     { return dataFolder().getChildFile ("Presets"); }
+    static juce::File openingFile()                      { return dataFolder().getChildFile ("Opening Sound.zenpreset"); }
+    // The sound a new Zenthesizer starts with (the current sound, tweaks included).
+    bool setOpeningSound();
+    void clearOpeningSound()                             { openingFile().deleteFile(); }
+    static juce::String openingSoundName();
 
     // User presets: everything (sound + your waves), saved as a file you can reload anywhere.
     bool saveUserPreset (const juce::String& name);

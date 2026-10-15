@@ -364,7 +364,7 @@ private:
         m.addSeparator();
         m.addSubMenu ("Copy a built-in table", builtIn);
         m.addItem (300, "Reset to one sine");
-        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&shapesBtn),
+        showMenu (m, shapesBtn,
                          [safe = juce::Component::SafePointer<WavePanel> (this)] (int r)
                          {
                              if (safe == nullptr || r == 0) return;
@@ -414,7 +414,7 @@ private:
         m.addSeparator();
         m.addItem (10000, "Show the folder");
        #endif
-        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&loadBtn),
+        showMenu (m, loadBtn,
                          [safe = juce::Component::SafePointer<WavePanel> (this), files] (int r)
                          {
                              if (safe == nullptr || r == 0) return;

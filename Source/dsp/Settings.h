@@ -13,6 +13,7 @@ namespace zen
     {
         none = 0, env1, env2, lfo1, lfo2, rand, press, vel, wheel, chanAT,
         plateA, plateB, plateC, plateD, key,
+        slide,      // MPE "slide" / timbre (CC74), per note on an MPE controller
         count
     };
 
@@ -40,7 +41,7 @@ namespace zen
     };
 
     // ---- Choices --------------------------------------------------------------
-    enum class WaveA : int { saw = 0, square, triangle, sine };
+    enum class WaveA : int { saw = 0, square, triangle, sine, string };   // string = a plucked physical string
     enum class LfoShape : int { sine = 0, triangle, saw, square, drift };
     enum class ArpMode : int { up = 0, down, upDown, random, played };
 
@@ -97,6 +98,7 @@ namespace zen
         bool arpHold = false;
 
         float bendRange = 2.0f;   // semitones, for MIDI pitch bend and the on-screen strip
+        int   mpe = 0;            // 0 = off; else MPE is on and this is the per-note bend range (semitones)
         float loopLevel = 0.8f;   // the looper's playback level
         DrumSettings drums;
 

@@ -62,12 +62,14 @@ int main()
     }
 
     // 2. every Engine A wave and every table at low and very high notes
-    for (int w = 0; w < 4; ++w)
+    for (int w = 0; w < 5; ++w)
         for (int note : { 36, 60, 96 })
         {
             Run r; r.s.aWave = (WaveA) w; r.s.aShape = 0.6f; r.s.reverbMix = 0; r.s.cutoff = 1.0f;
             r.render (24000, { on (0, note) });
-            CHECK (finite (r.L) && peak (r.L) < 1.25f && rms (r.L, 4000, 24000) > 0.01f, "wave A %d note %d (rms %.3f)", w, note, rms (r.L, 4000, 24000));
+            // (a plucked string rings down, quickly up high, so look at its first quarter second)
+            const float lv = w == (int) WaveA::string ? rms (r.L, 200, 12000) : rms (r.L, 4000, 24000);
+            CHECK (finite (r.L) && peak (r.L) < 1.25f && lv > 0.01f, "wave A %d note %d (rms %.3f)", w, note, lv);
         }
     for (int t = 0; t < numTables; ++t)
     {
@@ -88,7 +90,7 @@ int main()
             auto& s = r.s;
             if (b % 8 == 0)
             {
-                s.aWave = (WaveA) (g() % 4); s.aTune = u (g); s.aDetune = u (g); s.aShape = u (g); s.aLevel = u (g);
+                s.aWave = (WaveA) (g() % 5); s.aTune = u (g); s.aDetune = u (g); s.aShape = u (g); s.aLevel = u (g);
                 s.bTable = (int) (g() % 4); s.bPos = u (g); s.bWarp = u (g); s.bUnison = u (g); s.bLevel = u (g); s.air = u (g);
                 s.cutoff = u (g); s.res = u (g); s.drive = u (g); s.envAmt = u (g); s.glide = u (g) * 0.5f;
                 s.ampA = u (g) * 0.6f; s.ampD = u (g); s.ampS = u (g); s.ampR = u (g) * 0.7f;
@@ -489,6 +491,109 @@ int main()
         CHECK (dubStep < padStep * 1.5f && hi > -30.0f, "overdub punch in/out has no chop (max step %.4f, pad's own %.4f)", dubStep, padStep);
         lp.requestUndo(); out.clear(); run (len2, false);
         CHECK (peak (out) < 1.0e-6f, "UNDO takes the overdub back, taper included (peak %.6f)", peak (out));
+    }
+
+    // 17. STRING mode: in tune, decays, brighter with SHAPE, buzzes at the top, stays bounded
+    {
+        auto pluck = [] (int note, float shape, int vel, int len, float detune = 0.0f)
+        {
+            Run r; auto& s = r.s;
+            s.aWave = WaveA::string; s.aShape = shape; s.aDetune = detune; s.aLevel = 0.8f; s.bLevel = 0.0f; s.air = 0.0f;
+            s.cutoff = 1.0f; s.res = 0.0f; s.drive = 0.0f; s.envAmt = 0.5f; s.reverbMix = 0.0f; s.chorusMix = 0.0f; s.delayMix = 0.0f;
+            s.ampA = 0.0f; s.ampS = 1.0f; s.ampR = 0.7f;
+            r.render (len, { on (0, note, vel) });
+            return r.L;
+        };
+        // pitch by autocorrelation over 100 ms (search 0.5x..2x the expected period)
+        auto measureHz = [] (const std::vector<float>& x, size_t from, float expectHz)
+        {
+            const int n = 4800; const float fs = 48000.0f;
+            const int lo = (int) (fs / (expectHz * 1.4f)), hi = (int) (fs / (expectHz * 0.7f));
+            int best = lo; double bestC = -1e9;
+            for (int lag = lo; lag <= hi; ++lag)
+            {
+                double c = 0, e = 1e-12, e0 = 1e-12;
+                for (int i = 0; i < n; ++i) { c += x[from + i] * x[from + i + lag]; e += x[from + i + lag] * x[from + i + lag]; e0 += x[from + i] * x[from + i]; }
+                c /= std::sqrt (e * e0);
+                if (c > bestC) { bestC = c; best = lag; }
+            }
+            // parabolic refinement
+            auto corr = [&] (int lag) { double c = 0, e = 1e-12, e0 = 1e-12; for (int i = 0; i < n; ++i) { c += x[from + i] * x[from + i + lag]; e += x[from + i + lag] * x[from + i + lag]; e0 += x[from + i] * x[from + i]; } return c / std::sqrt (e * e0); };
+            const double a = corr (best - 1), b = corr (best), c = corr (best + 1);
+            const double off = 0.5 * (a - c) / (a - 2 * b + c);
+            return fs / (float) (best + off);
+        };
+        float worstCents = 0.0f;
+        for (int note : { 31, 55, 57, 69, 81, 93 })   // (36..51 play the plates)
+        {
+            const auto x = pluck (note, 0.3f, 100, 24000);
+            const float want = 440.0f * std::pow (2.0f, (float) (note - 69) / 12.0f);
+            const float got = measureHz (x, 4800, want);
+            worstCents = std::max (worstCents, std::abs (1200.0f * std::log2 (got / want)));
+            std::printf ("      note %d: want %.2f Hz, got %.2f Hz\n", note, want, got);
+        }
+        CHECK (worstCents < 8.0f, "STRING is in tune (worst %.1f cents over G1..A6)", worstCents);
+
+        auto hfRatio = [] (const std::vector<float>& x, size_t a, size_t b)
+        {
+            double d = 0, e = 1e-12; for (size_t i = a + 1; i < b; ++i) { d += (x[i] - x[i - 1]) * (x[i] - x[i - 1]); e += x[i] * x[i]; } return (float) std::sqrt (d / e);
+        };
+        const auto nylon = pluck (55, 0.05f, 100, 48000), steel = pluck (55, 0.6f, 100, 48000), sitar = pluck (55, 1.0f, 100, 48000);
+        const float hN = hfRatio (nylon, 2400, 24000), hS = hfRatio (steel, 2400, 24000), hB = hfRatio (sitar, 36000, 48000), hS2 = hfRatio (steel, 36000, 48000);
+        CHECK (hS > hN * 1.5f, "SHAPE brightens it (nylon %.3f -> steel %.3f)", hN, hS);
+        CHECK (hB > hS2 * 1.3f, "the top of SHAPE buzzes and keeps buzzing (steel %.3f -> sitar %.3f, 0.75-1 s in)", hS2, hB);
+
+        const auto ring = pluck (33, 0.4f, 100, 48000 * 4);
+        const float early = rms (ring, 4800, 19200), late = rms (ring, 48000 * 3, 48000 * 4);
+        CHECK (late < early * 0.5f && late > early * 0.005f, "a string rings on and dies away (%.3f -> %.4f over 3 s)", early, late);
+
+        float pk = 0.0f; bool ok = true;
+        for (float sh : { 0.0f, 0.5f, 0.8f, 1.0f })
+            for (int vel : { 20, 127 })
+                for (int note : { 28, 60, 100 })
+                {
+                    const auto x = pluck (note, sh, vel, 24000, 0.6f);
+                    pk = std::max (pk, peak (x)); ok = ok && finite (x);
+                }
+        CHECK (ok && pk < 1.25f && pk > 0.05f, "every SHAPE / velocity / register is bounded (peak %.2f)", pk);
+    }
+
+    // 18. MPE: each member channel bends, presses and slides only its own note
+    {
+        auto bendMsg = [] (int at, int ch, float b) { const int v = std::min (16383, std::max (0, (int) std::lround (8192.0f + b * 8192.0f)));
+                                                      return MidiEvent { at, (uint8_t) (0xE0 | (ch - 1)), (uint8_t) (v & 127), (uint8_t) (v >> 7) }; };
+        auto pressMsg = [] (int at, int ch, int v) { return MidiEvent { at, (uint8_t) (0xD0 | (ch - 1)), (uint8_t) v, 0 }; };
+        auto ccMsg = [] (int at, int ch, int cc, int v) { return MidiEvent { at, (uint8_t) (0xB0 | (ch - 1)), (uint8_t) cc, (uint8_t) v }; };
+        auto voiceOn = [] (Run& r, int ch, int note) -> const Voice*
+        {
+            return r.eng.findVoice ((ch << 8) | note);
+        };
+        Run r; r.s.mpe = 48; r.s.aWave = WaveA::sine; r.s.aShape = 0; r.s.bLevel = 0; r.s.reverbMix = 0; r.s.chorusMix = 0; r.s.delayMix = 0;
+        r.render (2400, { bendMsg (0, 2, 0.25f), pressMsg (0, 2, 30), ccMsg (0, 2, 74, 90), on (10, 57, 100, 2),
+                          on (20, 40, 100, 3) });   // note 40 on a member channel is a note, not a plate
+        const Voice* a = voiceOn (r, 2, 57); const Voice* b = voiceOn (r, 3, 40);
+        CHECK (a != nullptr && b != nullptr, "MPE notes on channels 2 and 3 both play (40 is not taken as a pad)");
+        if (a && b)
+        {
+            CHECK (std::abs (a->noteBend - 12.0f) < 0.1f && std::abs (b->noteBend) < 0.01f,
+                   "bend sent before a note applies to that note only (%.2f, %.2f semitones)", a->noteBend, b->noteBend);
+            r.render (4800, { bendMsg (0, 3, -0.5f), pressMsg (0, 3, 120), ccMsg (0, 3, 74, 10) });
+            CHECK (std::abs (b->noteBend + 24.0f) < 0.2f && std::abs (a->noteBend - 12.0f) < 0.1f, "per-note bend (%.2f / %.2f)", a->noteBend, b->noteBend);
+            CHECK (b->press > 0.85f && a->press < 0.3f, "per-note pressure (%.2f / %.2f)", a->press, b->press);
+            CHECK (a->slide > 0.65f && b->slide < 0.15f, "per-note slide (%.2f / %.2f)", a->slide, b->slide);
+        }
+        // pitch of the bent note: 220 Hz bent up 12 = 440 Hz (count zero crossings of that note alone)
+        {
+            Run q; q.s.mpe = 48; q.s.aWave = WaveA::sine; q.s.aShape = 0; q.s.bLevel = 0; q.s.air = 0; q.s.reverbMix = 0; q.s.chorusMix = 0; q.s.delayMix = 0; q.s.cutoff = 1.0f;
+            q.s.aDetune = 0.0f;
+            q.render (48000, { bendMsg (0, 5, 0.25f), on (0, 57, 100, 5) });
+            int zc = 0; for (size_t i = 24001; i < 48000; ++i) if (q.L[i - 1] < 0.0f && q.L[i] >= 0.0f) ++zc;
+            CHECK (std::abs (zc * 2 - 440) <= 4, "a bent MPE note sounds at the bent pitch (%d Hz, want 440)", zc * 2);
+        }
+        // MPE off: channel bend is global again, and pads are pads
+        Run g; g.s.mpe = 0;
+        g.render (2400, { on (0, 57, 100, 2), on (0, 60, 100, 3), bendMsg (100, 2, 0.5f), on (200, 40, 100, 4) });
+        CHECK (std::abs (g.eng.globalBendSemis() - 1.0f) < 0.01f && voiceOn (g, 4, 40) == nullptr, "MPE off: bend is global and pad notes play plates");
     }
 
     std::printf (failures == 0 ? "\nALL PASSED\n" : "\n%d FAILED\n", failures);

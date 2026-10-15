@@ -43,10 +43,21 @@ namespace presets
         };
     }
 
+    #include "PresetsMore.h"
+
+    // The first batch (below) followed by the second (PresetsMore.h). New presets go at the end,
+    // so a saved session's preset number keeps pointing at the same sound.
+    inline std::vector<Preset> withMore (std::vector<Preset> v)
+    {
+        auto more = morePresets();
+        v.insert (v.end(), more.begin(), more.end());
+        return v;
+    }
+
     inline const std::vector<Preset>& all()
     {
         using namespace ids;
-        static const std::vector<Preset> list = {
+        static const std::vector<Preset> list = withMore ({
             { "Init", "Init", {}, {} },
 
             //================================================================ ETHEREAL
@@ -628,7 +639,7 @@ namespace presets
                 { cutoff, 0.78f }, { ampA, 0.08f }, { ampD, 0.6f }, { ampS, 0.6f }, { ampR, 0.45f }, { glide, 0.35f }, { lfo1Rate, 0.78f },
                 { delaySync, 1 }, { delayFeedback, 0.35f }, { delayMix, 0.2f }, { reverbSize, 0.7f }, { reverbMix, 0.4f } },
               { { Src::lfo1, Dst::pitch, 0.009f } } },
-        };
+        });
         return list;
     }
 }

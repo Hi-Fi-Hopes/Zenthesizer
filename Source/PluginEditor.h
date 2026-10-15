@@ -64,6 +64,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override {}
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
     void setRenderScale (float pixelsPerUnit);
 
     enum Page { synth = 0, mod, waves, beat, fx, play, stage, numPages };
@@ -104,13 +105,15 @@ private:
     WoodKnob loopLevelKnob { "LOOP LVL", 32.0f };
     ArcStrip pitchStrip { "PITCH", true,  { 490.0f, 490.0f }, 395.0f, 254.0f, 286.0f };
     ArcStrip modStrip   { "MOD",   false, { 490.0f, 490.0f }, 395.0f, 106.0f, 74.0f };
-    juce::ComboBox bendBox;
+    juce::ComboBox bendBox, mpeBox;
     juce::Component presetHit;
 
     // SYNTH page
     Porthole porthole;
     std::array<std::unique_ptr<WoodKnob>, 8> mainKnobs;
-    std::array<std::unique_ptr<SteelButton>, 9> modButtons;
+    static constexpr int numModButtons = 10;
+    std::array<std::unique_ptr<SteelButton>, numModButtons> modButtons;
+    static int srcForButton (int i) { return i < 9 ? i + 1 : (int) zen::Src::slide; }
     EngineBox engineA, engineB;
 
     // MOD page
@@ -151,12 +154,17 @@ class ZenEditor : public juce::AudioProcessorEditor
 public:
     explicit ZenEditor (ZenProcessor&);
     void resized() override;
-    void paint (juce::Graphics& g) override { g.fillAll (theme::table); }
+    void paint (juce::Graphics& g) override;
 
     static constexpr int designSize = 980;
     Content& getContent() { return content; }
 
     ~ZenEditor() override;
+
+   #if ! (JUCE_ANDROID || JUCE_IOS)
+    void setFullscreen (bool);
+    bool isFullscreen() const { return full != nullptr; }
+   #endif
 
 private:
     Content content;
@@ -195,5 +203,18 @@ private:
         void beginPan (int index);
     };
     Gestures gestures { *this };
+   #else
+    // Fullscreen: the slab moves into a borderless window that covers the whole monitor, centred.
+    struct FullWindow : public juce::Component
+    {
+        explicit FullWindow (ZenEditor&);
+        void paint (juce::Graphics& g) override { g.fillAll (theme::table); }
+        void resized() override;
+        bool keyPressed (const juce::KeyPress&) override;
+        ZenEditor& ed;
+        SteelButton backBtn { "BACK", 26.0f };
+    };
+    std::unique_ptr<FullWindow> full;
+    SteelButton fullBtn { "FULL", 22.0f }, returnBtn { "BRING IT BACK", 26.0f };
    #endif
 };

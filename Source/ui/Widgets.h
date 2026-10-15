@@ -40,6 +40,23 @@ public:
     }
 
     juce::Font getPopupMenuFont() override               { return theme::font (theme::FontKind::sans, 15.0f); }
+
+    // Menus open inside the plugin window, at their natural size. Separate OS-level menu windows
+    // (scaled to match the slab) misbehave in some hosts and on touch screens.
+    juce::Component* getParentComponentForMenuOptions (const juce::PopupMenu::Options& o) override
+    {
+        if (auto* p = o.getParentComponent()) return p;
+        if (auto* t = o.getTargetComponent()) return t->getTopLevelComponent();
+        return nullptr;
+    }
+    bool shouldPopupMenuScaleWithTargetComponent (const juce::PopupMenu::Options&) override { return false; }
+    void getIdealPopupMenuItemSize (const juce::String& text, bool isSeparator, int standardHeight, int& w, int& h) override
+    {
+        LookAndFeel_V4::getIdealPopupMenuItemSize (text, isSeparator, standardHeight, w, h);
+       #if JUCE_ANDROID || JUCE_IOS
+        if (! isSeparator) h = std::max (h, 40);   // finger-sized rows
+       #endif
+    }
     juce::Font getComboBoxFont (juce::ComboBox&) override { return theme::font (theme::FontKind::sansBold, 12.5f, 0.08f); }
     juce::Font getLabelFont (juce::Label&) override       { return theme::font (theme::FontKind::sansBold, 12.5f, 0.08f); }
 
@@ -61,6 +78,16 @@ public:
         label.setJustificationType (juce::Justification::centred);
     }
 };
+
+// Shows a menu with the slab's look, inside the window that holds `target`.
+inline void showMenu (juce::PopupMenu& m, juce::Component& target, std::function<void (int)> callback, int columns = 1)
+{
+    m.setLookAndFeel (&target.getLookAndFeel());
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target)
+                                               .withParentComponent (target.getTopLevelComponent())
+                                               .withMaximumNumColumns (columns),
+                     std::move (callback));
+}
 
 //==============================================================================
 struct ModArc { juce::Colour colour; float amount; };
@@ -287,9 +314,11 @@ public:
         {
             const juce::Rectangle<float> tr = labelAbove ? juce::Rectangle<float> (0.0f, 0.0f, w, 13.0f)
                                                          : juce::Rectangle<float> (0.0f, c.y + r + 4.0f, w, 13.0f);
-            theme::burnText (g, getButtonText(), tr, juce::Justification::centredTop, theme::font (theme::FontKind::sans, 10.0f, 0.12f));
+            theme::burnText (g, getButtonText(), tr, juce::Justification::centredTop, theme::font (theme::FontKind::sans, 10.0f, 0.12f), labelColour);
         }
     }
+
+    juce::Colour labelColour = theme::burn;   // bone when the button sits off the wood
 
 private:
     bool held = false;

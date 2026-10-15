@@ -5,6 +5,7 @@
 
 #include "../PluginProcessor.h"
 #include "Widgets.h"
+#include <map>
 
 class BeatPanel : public juce::Component, private juce::Timer
 {
@@ -232,6 +233,7 @@ private:
                 previewBtn { "HEAR", 20.0f }, soundBtn { "SOUND", 20.0f }, kitsBtn { "KITS", 20.0f };
     std::array<juce::String, zen::numDrums> rowNames;
     int hearWhenReady = -1;
+    bool groovesBringKit = true;
     bool wasBusy = false;
 
     bool isPatchRow (int r) const { return d.sound[(size_t) r] == (int) zen::Sound::patch; }
@@ -285,18 +287,42 @@ private:
 
     void showGrooves()
     {
+        enum { idKitToggle = 1000 };
         juce::PopupMenu m;
         m.addSectionHeader ("Load a groove (replaces the pattern, tempo and swing)");
         const auto& gs = zen::grooves();
+        std::map<juce::String, juce::PopupMenu> folders;
+        juce::StringArray folderOrder;
         for (int i = 0; i < (int) gs.size(); ++i)
-            m.addItem (i + 1, juce::String (gs[(size_t) i].name) + "   (" + juce::String ((int) gs[(size_t) i].bpm) + ")");
-        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&grooveBtn),
+        {
+            const auto& g = gs[(size_t) i];
+            const auto label = juce::String (g.name) + "   (" + juce::String ((int) g.bpm) + ")";
+            const juce::String folder (g.folder);
+            if (folder.isEmpty()) { m.addItem (i + 1, label); continue; }
+            folderOrder.addIfNotAlreadyThere (folder);
+            folders[folder].addItem (i + 1, label);
+        }
+        m.addSeparator();
+        for (auto& f : folderOrder) m.addSubMenu (f, folders[f]);
+        m.addSeparator();
+        m.addItem (idKitToggle, "Switch to the kit each groove was written for (rows with synth patches stay)", true, groovesBringKit);
+        showMenu (m, grooveBtn,
                          [safe = juce::Component::SafePointer<BeatPanel> (this)] (int r)
                          {
                              if (safe == nullptr || r <= 0) return;
+                             if (r == idKitToggle) { safe->groovesBringKit = ! safe->groovesBringKit; return; }
+                             const auto& g = zen::grooves()[(size_t) (r - 1)];
                              safe->proc.loadGroove (r - 1);
+                             juce::String kitNote;
+                             if (juce::String (g.kit).isNotEmpty())
+                                 for (int k = 0; k < (int) zen::kits().size(); ++k)
+                                     if (juce::String (zen::kits()[(size_t) k].name) == g.kit)
+                                     {
+                                         if (safe->groovesBringKit) { safe->proc.loadKit (k, true); kitNote = "  (" + juce::String (g.kit) + " kit)"; }
+                                         else kitNote = "  -  written for the " + juce::String (g.kit) + " kit";
+                                     }
                              safe->syncFromProcessor();
-                             if (safe->setHint) safe->setHint (juce::String (zen::grooves()[(size_t) (r - 1)].name) + " loaded  -  tap PLAY");
+                             if (safe->setHint) safe->setHint (juce::String (g.name) + " loaded" + kitNote + "  -  tap PLAY");
                          });
     }
 
@@ -350,13 +376,24 @@ private:
         const auto info = ZenProcessor::presetInfo();
         juce::StringArray order;
         for (auto& i : info) if (! order.contains (i.category) && i.category != "Init") order.add (i.category);
+        // folders as in the preset menu ("World/Asia" sits inside "World")
         juce::PopupMenu factory;
-        for (auto& c : order)
+        juce::StringArray tops;
+        for (auto& c : order) tops.addIfNotAlreadyThere (c.upToFirstOccurrenceOf ("/", false, false));
+        for (auto& top : tops)
         {
-            juce::PopupMenu sub;
-            for (int i = 0; i < (int) info.size(); ++i)
-                if (info[(size_t) i].category == c) sub.addItem (idFactory + i, info[(size_t) i].name);
-            factory.addSubMenu (c, sub);
+            juce::PopupMenu topMenu;
+            for (auto& c : order)
+            {
+                if (c.upToFirstOccurrenceOf ("/", false, false) != top) continue;
+                const auto subName = c.fromFirstOccurrenceOf ("/", false, false);
+                juce::PopupMenu items;
+                for (int i = 0; i < (int) info.size(); ++i)
+                    if (info[(size_t) i].category == c) items.addItem (idFactory + i, info[(size_t) i].name);
+                if (subName.isEmpty()) topMenu = items;
+                else topMenu.addSubMenu (subName, items);
+            }
+            factory.addSubMenu (top, topMenu);
         }
         m.addSubMenu ("From a preset", factory);
 
@@ -366,7 +403,7 @@ private:
         m.addSubMenu ("From your presets", mine, user.size() > 0);
         m.addItem (idNow, "The sound you're playing now (" + proc.currentPresetName() + ")");
 
-        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&soundBtn),
+        showMenu (m, soundBtn,
                          [safe = juce::Component::SafePointer<BeatPanel> (this), row, info, user] (int r)
                          {
                              if (safe == nullptr || r <= 0) return;
@@ -415,7 +452,7 @@ private:
         m.addSectionHeader ("Load a kit (all 8 rows; your pattern stays)");
         const auto& ks = zen::kits();
         for (int i = 0; i < (int) ks.size(); ++i) m.addItem (i + 1, ks[(size_t) i].name);
-        m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&kitsBtn),
+        showMenu (m, kitsBtn,
                          [safe = juce::Component::SafePointer<BeatPanel> (this)] (int r)
                          {
                              if (safe == nullptr || r <= 0) return;

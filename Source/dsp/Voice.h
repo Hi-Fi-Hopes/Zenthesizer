@@ -79,6 +79,73 @@ namespace zen
     };
 
     //==========================================================================
+    // A plucked string (Karplus-Strong, extended). A burst of filtered noise circulates in a delay
+    // line one period long; a linear-phase loop filter takes the highs away a little each pass.
+    // SHAPE 0..0.66: soft nylon -> bright steel (brighter pluck, less damping, pluck nearer the bridge);
+    // 0.66..1: a sitar-style buzzing bridge adds a bright fizz to each swing, for as long as the note rings.
+    struct PluckString
+    {
+        static constexpr int size = 4096, mask = size - 1;   // lowest note ~12 Hz at 48 kHz
+        float buf[size] {};
+        int w = 0;
+        float x1 = 0.0f, x2 = 0.0f, env = 0.0f, dcIn = 0.0f, dcOut = 0.0f, bzIn = 0.0f, bzOut = 0.0f;
+
+        void clear() noexcept { std::fill (std::begin (buf), std::end (buf), 0.0f); x1 = x2 = env = dcIn = dcOut = bzIn = bzOut = 0.0f; }
+
+        // Adds a pluck to whatever is already ringing (like plucking a ringing string again).
+        void pluck (float periodSamples, float shape, float velocity, Rng& rng) noexcept
+        {
+            const int n = std::max (2, std::min (size - 2, (int) periodSamples));
+            const float tone = std::min (1.0f, shape / 0.66f);
+            const float bright = clamp01 (0.15f + 0.65f * tone + 0.3f * velocity);
+            const float a = 0.08f + 0.9f * bright * bright;           // one-pole lowpass on the noise
+            const int posD = std::max (1, (int) ((float) n * (0.5f - 0.38f * tone)));   // pluck position
+            float tmp[size];
+            float lp = 0.0f, mean = 0.0f;
+            for (int k = 0; k < n; ++k) { lp += a * (rng.next() - lp); tmp[k] = lp; }
+            for (int k = n - 1; k >= posD; --k) tmp[k] -= 0.8f * tmp[k - posD];   // comb: where along the string
+            for (int k = 0; k < n; ++k) mean += tmp[k];
+            mean /= (float) n;
+            float pk = 1.0e-6f;
+            for (int k = 0; k < n; ++k) { tmp[k] -= mean; pk = std::max (pk, std::abs (tmp[k])); }
+            const float g = (0.35f + 0.65f * velocity) / pk;
+            for (int k = 0; k < n; ++k) buf[(size_t) ((w - n + k) & mask)] += tmp[k] * g;
+            env = std::max (env, 0.35f + 0.65f * velocity);
+        }
+
+        // periodSamples: fs / Hz. decay: per-period gain for the fundamental. damp: 0 bright .. 0.25 dark.
+        float process (float periodSamples, float damp, float gain, float buzz) noexcept
+        {
+            const float d = std::max (1.0f, std::min ((float) size - 3.0f, periodSamples - 1.0f));   // the loop filter adds 1
+            float rp = (float) w - d;
+            if (rp < 0.0f) rp += (float) size;
+            const int i0 = (int) rp;
+            const float fr = rp - (float) i0;
+            const float a = buf[(size_t) (i0 & mask)], b = buf[(size_t) ((i0 + 1) & mask)];
+            const float x = a + (b - a) * fr;
+            float y = (damp * x + (1.0f - 2.0f * damp) * x1 + damp * x2) * gain;
+            x2 = x1; x1 = x;
+            buf[(size_t) w] = y;
+            w = (w + 1) & mask;
+            float out = y;
+            if (buzz > 0.0f)
+            {
+                // the buzzing bridge (jawari): each time the string swings onto the curved bridge its
+                // peak gets a bright, fizzing edge. Measured against the string's own level, so the
+                // buzz lasts as long as the note does, the way a sitar's does.
+                env = std::max (std::abs (y), env * 0.9995f);
+                const float u = y / std::max (1.0e-5f, env);
+                const float touch = u > 0.4f ? std::tanh ((u - 0.4f) * 14.0f) : 0.0f;   // a quick, hard contact
+                bzOut = touch - bzIn + 0.93f * bzOut; bzIn = touch;   // keep only the fizz (above ~500 Hz)
+                out += buzz * 1.6f * bzOut * env;
+            }
+            // gentle DC blocker on the way out
+            dcOut = out - dcIn + 0.9995f * dcOut; dcIn = out;
+            return dcOut;
+        }
+    };
+
+    //==========================================================================
     // 4-pole zero-delay ladder (Zavalishin), tanh on the input, resonance up to self-oscillation.
     struct Ladder
     {
@@ -162,9 +229,13 @@ namespace zen
         float pitch = 60.0f;  // gliding pitch
         float vel = 0.8f;
         float pressTarget = 0.0f, press = 0.0f;
+        float noteBend = 0.0f, noteBendTarget = 0.0f;   // MPE: this note's own pitch bend (semitones)
+        float slide = 0.0f, slideTarget = 0.0f;         // MPE: this note's slide (CC74), 0..1
         uint32_t age = 0;
 
         AnalogOsc a[numA];
+        PluckString str[2];          // oscillator A in STRING mode: a string and its detuned twin
+        bool pluckPending = false;
         float bPhase[numB] {};
         Ladder lad[2];
         Env amp, e1, e2;
@@ -183,6 +254,8 @@ namespace zen
             if (! glide) pitch = newNote;   // with glide the caller has set where to glide from
             pressTarget = 0.0f;
             if (! wasActive) press = 0.0f;
+            noteBendTarget = 0.0f; noteBend = 0.0f;
+            if (! wasActive) slide = slideTarget;
             age = serial;
             gate = true; sustained = false; active = true;
 
@@ -193,10 +266,12 @@ namespace zen
                 for (auto& o : a) { o.phase = 0.5f + 0.5f * r.next(); o.fb = 0.0f; }
                 for (auto& p : bPhase) p = 0.5f + 0.5f * r.next();
                 lad[0].clear(); lad[1].clear();
+                str[0].clear(); str[1].clear();
                 noise.s = seed * 2654435761u | 1u;
                 amp.level = 0.0f; e1.level = 0.0f; e2.level = 0.0f;
             }
             amp.gateOn(); e1.gateOn(); e2.gateOn();
+            pluckPending = true;
         }
 
         void release() noexcept

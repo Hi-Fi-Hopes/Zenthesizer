@@ -37,8 +37,8 @@ namespace theme
             ledOff, red, amber, blue, green, bone, juce::Colour (0xffffd27a), juce::Colour (0xffff9ec4),
             juce::Colour (0xffc7b8ff), juce::Colour (0xff9cf0c2),
             juce::Colour (0xffffc46b), juce::Colour (0xff7fe0d0), juce::Colour (0xffd9a0ff), juce::Colour (0xffa0d4ff),
-            juce::Colour (0xffe0e0a0) };
-        return c[juce::jlimit (0, 14, src)];
+            juce::Colour (0xffe0e0a0), juce::Colour (0xff8fd6ff) };
+        return c[juce::jlimit (0, 15, src)];
     }
 
     enum class FontKind { serif, sans, sansBold };

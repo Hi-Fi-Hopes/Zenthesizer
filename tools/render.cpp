@@ -1,3 +1,5 @@
+#include <typeinfo>
+#include <dlfcn.h>
 // Developer tool: plays a few notes, then renders each page of the editor to /tmp/zen_*.png.
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
@@ -5,6 +7,7 @@
 
 int main()
 {
+    std::setvbuf (stdout, nullptr, _IONBF, 0);
     juce::ScopedJuceInitialiser_GUI init;
     ZenProcessor proc;
     proc.setPlayConfigDetails (0, 2, 48000.0, 512);
@@ -127,6 +130,143 @@ int main()
     ed->setSize (980, 980);
     std::printf ("editor + slab at 980 px: %.0f ms\n", juce::Time::getMillisecondCounterHiRes() - t0);
     auto* zen = dynamic_cast<ZenEditor*> (ed.get());
+
+    if (std::getenv ("ZEN_FULLTEST"))
+    {
+        ed->addToDesktop (0); ed->setVisible (true);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (300);
+        zen->setFullscreen (true);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (800);
+        for (int d = 0; d < juce::Desktop::getInstance().getNumComponents(); ++d)
+        {
+            auto* c = juce::Desktop::getInstance().getComponent (d);
+            std::printf ("window %d: %s %s\n", d, typeid (*c).name(), c->getScreenBounds().toString().toRawUTF8());
+            if (c != ed.get())
+            {
+                auto img = c->createComponentSnapshot (c->getLocalBounds(), true, 0.5f);
+                juce::File f ("/tmp/zen_full.png"); f.deleteFile(); juce::FileOutputStream os (f); juce::PNGImageFormat().writeImageToStream (img, os);
+            }
+        }
+        { auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 0.5f);
+          juce::File f ("/tmp/zen_full_editor.png"); f.deleteFile(); juce::FileOutputStream os (f); juce::PNGImageFormat().writeImageToStream (img, os); }
+        zen->setFullscreen (false);
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (300);
+        std::printf ("after leaving: windows %d, content parent is editor: %d\n", juce::Desktop::getInstance().getNumComponents(),
+                     zen->getContent().getParentComponent() == ed.get());
+        { auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 0.5f);
+          juce::File f ("/tmp/zen_full_back.png"); f.deleteFile(); juce::FileOutputStream os (f); juce::PNGImageFormat().writeImageToStream (img, os); }
+        return 0;
+    }
+
+    if (std::getenv ("ZEN_MENUTEST"))
+    {
+        // click the preset name, then click an item in the menu, through the real window system
+        ed->setTopLeftPosition (0, 0);
+        ed->addToDesktop (0);
+        ed->setVisible (true);
+        auto pump = [] (int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil (ms); };
+        pump (300);
+        auto* peer = ed->getPeer();
+        // real pointer events through the XTest extension (JUCE menus read the real pointer)
+        void* x11 = dlopen ("libX11.so.6", RTLD_NOW); void* xtst = dlopen ("libXtst.so.6", RTLD_NOW);
+        using OpenFn = void* (*) (const char*); using MotionFn = int (*) (void*, int, int, int, unsigned long);
+        using ButtonFn = int (*) (void*, unsigned, int, unsigned long); using FlushFn = int (*) (void*);
+        auto xOpen = (OpenFn) dlsym (x11, "XOpenDisplay"); auto xFlush = (FlushFn) dlsym (x11, "XFlush");
+        auto fakeMotion = (MotionFn) dlsym (xtst, "XTestFakeMotionEvent"); auto fakeButton = (ButtonFn) dlsym (xtst, "XTestFakeButtonEvent");
+        void* xd = xOpen (nullptr);
+        auto moveTo = [&] (juce::Component* comp, juce::Point<float> pos)
+        {
+            const auto sp = comp->localPointToGlobal (pos).roundToInt();
+            fakeMotion (xd, -1, sp.x, sp.y, 0); xFlush (xd); pump (150);
+            fakeMotion (xd, -1, sp.x + 1, sp.y, 0); xFlush (xd); pump (150);
+        };
+        auto clickAt = [&] (juce::Component* comp, juce::Point<float> pos)
+        {
+            moveTo (comp, pos);
+            fakeButton (xd, 1, 1, 0); xFlush (xd); pump (80);
+            fakeButton (xd, 1, 0, 0); xFlush (xd); pump (400);
+        };
+        auto click = [&] (juce::ComponentPeer* pr, juce::Point<float> pos) { clickAt (&pr->getComponent(), pos); };
+        auto& content = zen->getContent();
+        // preset name sits at 490, 858 in design units
+        const auto namePos = ed->getLocalPoint (&content, juce::Point<float> (490.0f, 858.0f));
+        std::printf ("before: %s\n", proc.currentPresetName().toRawUTF8());
+        click (peer, namePos);
+        // menus now open inside the editor: find the menu windows among its children
+        auto menus = [&]
+        {
+            std::vector<juce::Component*> found;
+            std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+            {
+                for (auto* ch : c.getChildren())
+                {
+                    if (juce::String (typeid (*ch).name()).contains ("MenuWindow") && ch->isVisible()) found.push_back (ch);
+                    walk (*ch);
+                }
+            };
+            walk (*ed);
+            for (int d = 0; d < juce::Desktop::getInstance().getNumComponents(); ++d)
+                if (juce::String (typeid (*juce::Desktop::getInstance().getComponent (d)).name()).contains ("MenuWindow")) found.push_back (juce::Desktop::getInstance().getComponent (d));
+            return found;
+        };
+        auto items = [] (juce::Component* w)
+        {
+            std::vector<juce::Component*> v;
+            for (auto* ch : w->getChildren()) if (juce::String (typeid (*ch).name()).contains ("ItemComponent")) v.push_back (ch);
+            return v;
+        };
+        auto ms = menus();
+        std::printf ("menus open after clicking the name: %d (inside the editor: %s)\n", (int) ms.size(),
+                     ms.empty() ? "-" : (ms[0]->getParentComponent() != nullptr ? "yes" : "no"));
+        if (! ms.empty())
+        {
+            auto top = items (ms[0]);
+            std::printf ("top-level items: %d\n", (int) top.size());
+            // hover the second folder to open it, then click the third preset inside it
+            if (std::getenv ("ZEN_MENUSHOT") && top.size() > 8)
+            {
+                moveTo (top[8], top[8]->getLocalBounds().getCentre().toFloat()); pump (700);
+                auto ms2 = menus();
+                if (ms2.size() > 1) { auto sub = items (ms2.back()); if (! sub.empty()) { moveTo (sub[0], sub[0]->getLocalBounds().getCentre().toFloat()); pump (700); } }
+                auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+                juce::File f ("/tmp/zen_menu.png"); f.deleteFile(); juce::FileOutputStream os (f); juce::PNGImageFormat().writeImageToStream (img, os);
+                return 0;
+            }
+            juce::Component* folder = top.size() > 2 ? top[2] : nullptr;
+            if (folder != nullptr)
+            {
+                moveTo (folder, folder->getLocalBounds().getCentre().toFloat());
+                pump (600);
+                ms = menus();
+                std::printf ("menus open after hovering a folder: %d\n", (int) ms.size());
+                if (ms.size() > 1)
+                {
+                    auto subItems = items (ms.back());
+                    std::printf ("items in that folder: %d\n", (int) subItems.size());
+                    if (subItems.size() > 2)
+                    {
+                        moveTo (subItems[2], subItems[2]->getLocalBounds().getCentre().toFloat());
+                        clickAt (subItems[2], subItems[2]->getLocalBounds().getCentre().toFloat());
+                        pump (500);
+                    }
+                }
+            }
+        }
+        std::printf ("after: %s  (desktop components now %d)\n", proc.currentPresetName().toRawUTF8(), juce::Desktop::getInstance().getNumComponents());
+        if (std::getenv ("ZEN_MENUCONTROL"))
+        {
+            juce::PopupMenu::dismissAllActiveMenus(); pump (200);
+            juce::PopupMenu m; for (int i = 1; i <= 10; ++i) m.addItem (i, "item " + juce::String (i));
+            m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (ed.get()), [] (int r) { std::printf ("control menu result %d\n", r); });
+            pump (300);
+            auto* w = juce::Desktop::getInstance().getComponent (juce::Desktop::getInstance().getNumComponents() - 1);
+            juce::Component* it = nullptr;
+            for (auto* ch : w->getChildren()) if (juce::String (typeid (*ch).name()).contains ("ItemComponent") && ch->getY() > 40) { it = ch; break; }
+            if (it) { const auto p = w->getLocalPoint (it, it->getLocalBounds().getCentre().toFloat());
+                      pump (400); click (w->getPeer(), p); pump (400); }
+        }
+        return 0;
+    }
 
     const char* names[] = { "synth", "mod", "waves", "beat", "fx", "play", "stage" };
     { auto d = proc.getDrums(); d.playing = true; proc.setDrums (d); }

@@ -1,0 +1,458 @@
+#!/usr/bin/env python3
+# Generates Source/PresetsMore.h (the second batch of factory presets) from the table below.
+# Values are plain parameter values (see the notes at the top of Source/Presets.h).
+# Run: python3 tools/make_presets.py
+import os, re
+
+IDS = """aWave aTune aDetune aShape aLevel bTable bPos bWarp bUnison bLevel air cutoff res drive envAmt keyTrack
+ampA ampD ampS ampR e1A e1D e1S e1R e2A e2D e2S e2R lfo1Rate lfo1Shape lfo2Rate lfo2Shape randRate randSmooth
+glide spread volume velSens chorusMix chorusDepth chorusRate delayTime delaySync delayFeedback delayTone delayMix
+reverbSize reverbDecay reverbDamp reverbShimmer reverbMix arpOn arpMode arpRate arpOctaves arpGate arpHold""".split()
+SRC = "env1 env2 lfo1 lfo2 rand press vel wheel chanAT plateA plateB plateC plateD key slide".split()
+DST = "pitch aTune aDetune aShape aLevel bPos bWarp bUnison bLevel air cutoff res drive amp pan lfo1Rate lfo2Rate chorusMix delayMix reverbMix".split()
+
+SAW, SQR, TRI, SIN, STR = 0, 1, 2, 3, 4          # oscillator A
+AIR, GLASS, VOX, REED = 0, 1, 2, 3               # wavetables (VOX position: a 0, e .25, i .5, o .75, u 1)
+
+def P(name, cat, slots=(), **v): return (name, cat, v, list(slots))
+
+# Plucked strings share a starting point: an open filter, the amp held so the string decays by itself.
+def string(shape, det=0.0, ring=0.8, rel=0.6, **v):
+    base = dict(aWave=STR, aShape=shape, aDetune=det, aLevel=0.85, bLevel=0.0, cutoff=0.9, res=0.0, drive=0.05,
+                ampA=0.0, ampD=ring, ampS=1.0, ampR=rel, velSens=0.6)
+    base.update(v); return base
+
+STRINGS = "Strings"; BRASS = "Brass & Horns"; ASIA = "World/Asia"; INDIA = "World/India & Middle East"
+AFRICA = "World/Africa"; EUROPE = "World/Europe & Celtic"; AMERICAS = "World/Americas & Islands"
+ATMOS = "Atmospheres"; LOFI = "Lo-Fi"; CHOIR = "Choirs & Voices"; MALLET = "Mallets"; DRONE = "Drones & Bass"
+ARP = "Arps & Motion"; MPE = "MPE Expressive"; CINE = "Cinematic"
+
+presets = [
+    #============================================================== STRINGS
+    P("Warm Section", STRINGS, [("lfo1","pitch",0.006),("lfo2","cutoff",0.05)],
+      aWave=SAW, aDetune=0.45, aShape=0.15, aLevel=0.7, bTable=REED, bPos=0.2, bUnison=0.6, bLevel=0.35,
+      cutoff=0.58, res=0.1, envAmt=0.56, e1A=0.7, e1D=0.8, e1S=0.7, keyTrack=0.6, ampA=0.68, ampD=0.7, ampS=0.9, ampR=0.75,
+      lfo1Rate=0.8, chorusMix=0.55, chorusDepth=0.6, reverbSize=0.75, reverbDecay=0.7, reverbMix=0.4),
+    P("Cinematic Strings", STRINGS, [("lfo1","pitch",0.005)],
+      aWave=SAW, aDetune=0.55, aShape=0.1, aLevel=0.75, bTable=AIR, bPos=0.8, bUnison=0.8, bLevel=0.4,
+      cutoff=0.6, envAmt=0.55, e1A=0.75, e1D=0.8, e1S=0.7, ampA=0.72, ampS=0.95, ampR=0.82, lfo1Rate=0.8,
+      chorusMix=0.5, delaySync=4, delayFeedback=0.3, delayMix=0.12, reverbSize=0.95, reverbDecay=0.85, reverbMix=0.5),
+    P("Chamber Quartet", STRINGS, [("lfo1","pitch",0.012)],
+      aWave=SAW, aDetune=0.25, aShape=0.2, aLevel=0.75, cutoff=0.62, res=0.15, envAmt=0.58, e1A=0.55, e1D=0.7, e1S=0.6,
+      ampA=0.55, ampS=0.9, ampR=0.65, lfo1Rate=0.81, chorusMix=0.25, reverbSize=0.55, reverbDecay=0.55, reverbMix=0.3),
+    P("Solo Cello", STRINGS, [("lfo1","pitch",0.015),("press","amp",0.25)],
+      aWave=SAW, aDetune=0.05, aShape=0.25, aLevel=0.8, bTable=REED, bPos=0.35, bLevel=0.25, cutoff=0.52, res=0.2,
+      drive=0.2, envAmt=0.6, e1A=0.55, e1D=0.75, e1S=0.5, ampA=0.5, ampS=0.95, ampR=0.6, glide=0.15, lfo1Rate=0.8,
+      reverbSize=0.6, reverbDecay=0.6, reverbMix=0.3),
+    P("Solo Violin", STRINGS, [("lfo1","pitch",0.017),("press","cutoff",0.2)],
+      aWave=SAW, aDetune=0.03, aShape=0.1, aLevel=0.8, bTable=VOX, bPos=0.45, bLevel=0.2, cutoff=0.66, res=0.25,
+      envAmt=0.58, e1A=0.5, ampA=0.48, ampS=0.95, ampR=0.55, glide=0.2, lfo1Rate=0.83,
+      reverbSize=0.65, reverbDecay=0.6, reverbMix=0.32),
+    P("Pizzicato", STRINGS, [], **string(0.25, det=0.1, ring=0.62, rel=0.55, ampS=0.0, cutoff=0.8,
+      reverbSize=0.6, reverbDecay=0.55, reverbMix=0.35)),
+    P("Tremolo Strings", STRINGS, [("lfo1","amp",-0.5)],
+      aWave=SAW, aDetune=0.4, aShape=0.15, aLevel=0.75, bTable=REED, bPos=0.2, bUnison=0.5, bLevel=0.3, cutoff=0.6,
+      envAmt=0.55, e1A=0.6, ampA=0.5, ampS=0.9, ampR=0.7, lfo1Rate=0.87, lfo1Shape=1, chorusMix=0.4,
+      reverbSize=0.75, reverbDecay=0.7, reverbMix=0.4),
+    P("Glass Strings", STRINGS, [("lfo1","bPos",0.2)],
+      aWave=SAW, aDetune=0.4, aLevel=0.6, bTable=GLASS, bPos=0.4, bUnison=0.7, bLevel=0.45, cutoff=0.66,
+      ampA=0.7, ampS=0.9, ampR=0.8, lfo1Rate=0.3, chorusMix=0.5, reverbSize=0.85, reverbDecay=0.8, reverbShimmer=0.35, reverbMix=0.5),
+    P("Analog Strings", STRINGS, [],
+      aWave=SAW, aDetune=0.6, aShape=0.0, aLevel=0.8, cutoff=0.55, res=0.15, envAmt=0.6, e1A=0.6, e1D=0.75, e1S=0.6,
+      ampA=0.6, ampS=0.9, ampR=0.7, chorusMix=0.8, chorusDepth=0.7, chorusRate=0.35, reverbSize=0.6, reverbMix=0.3),
+    P("Concert Harp", STRINGS, [], **string(0.35, ring=0.85, rel=0.8, cutoff=0.85,
+      reverbSize=0.75, reverbDecay=0.75, reverbMix=0.4)),
+
+    #============================================================== BRASS & HORNS
+    P("Brass Section", BRASS, [("vel","cutoff",0.2),("env1","pitch",0.006),("lfo1","pitch",0.004)],
+      aWave=SAW, aDetune=0.35, aLevel=0.8, bTable=REED, bPos=0.15, bLevel=0.25, cutoff=0.45, res=0.15, drive=0.25,
+      envAmt=0.72, e1A=0.45, e1D=0.65, e1S=0.55, ampA=0.42, ampD=0.6, ampS=0.9, ampR=0.5, velSens=0.6, lfo1Rate=0.8,
+      chorusMix=0.25, reverbSize=0.6, reverbDecay=0.55, reverbMix=0.3),
+    P("French Horns", BRASS, [("vel","cutoff",0.15),("lfo1","pitch",0.004)],
+      aWave=SAW, aDetune=0.2, aShape=0.35, aLevel=0.75, bTable=VOX, bPos=0.75, bLevel=0.35, cutoff=0.42, res=0.1,
+      envAmt=0.62, e1A=0.55, e1D=0.7, e1S=0.6, ampA=0.55, ampS=0.95, ampR=0.65, lfo1Rate=0.78,
+      reverbSize=0.8, reverbDecay=0.75, reverbMix=0.45),
+    P("Soft Horns", BRASS, [("press","cutoff",0.3)],
+      aWave=SAW, aDetune=0.3, aShape=0.5, aLevel=0.7, cutoff=0.4, envAmt=0.58, e1A=0.65, e1D=0.75, e1S=0.6,
+      ampA=0.65, ampS=0.95, ampR=0.75, chorusMix=0.35, reverbSize=0.85, reverbDecay=0.8, reverbMix=0.5),
+    P("Trumpet Lead", BRASS, [("vel","cutoff",0.25),("lfo1","pitch",0.008),("env1","pitch",0.008)],
+      aWave=SAW, aDetune=0.02, aLevel=0.8, bTable=REED, bPos=0.5, bLevel=0.2, cutoff=0.5, res=0.2, drive=0.3,
+      envAmt=0.75, e1A=0.38, e1D=0.6, e1S=0.65, ampA=0.36, ampS=0.9, ampR=0.42, glide=0.12, lfo1Rate=0.8,
+      reverbSize=0.6, reverbDecay=0.55, reverbMix=0.28),
+    P("Muted Trumpet", BRASS, [("lfo1","pitch",0.006)],
+      aWave=SAW, aDetune=0.02, aLevel=0.6, bTable=VOX, bPos=0.5, bLevel=0.5, cutoff=0.58, res=0.45, envAmt=0.6,
+      e1A=0.35, e1D=0.6, e1S=0.5, ampA=0.35, ampS=0.85, ampR=0.4, lfo1Rate=0.8,
+      delaySync=3, delayFeedback=0.3, delayMix=0.15, reverbSize=0.6, reverbMix=0.3),
+    P("Trombone Swell", BRASS, [("lfo1","pitch",0.005)],
+      aWave=SAW, aDetune=0.1, aLevel=0.8, cutoff=0.38, res=0.15, drive=0.2, envAmt=0.7, e1A=0.7, e1D=0.8, e1S=0.7,
+      ampA=0.6, ampS=0.95, ampR=0.6, glide=0.35, lfo1Rate=0.77, reverbSize=0.7, reverbDecay=0.65, reverbMix=0.35),
+    P("Eighties Brass", BRASS, [("vel","cutoff",0.2)],
+      aWave=SAW, aDetune=0.5, aLevel=0.8, cutoff=0.4, res=0.25, envAmt=0.78, e1A=0.3, e1D=0.62, e1S=0.4,
+      ampA=0.3, ampS=0.85, ampR=0.45, chorusMix=0.5, reverbSize=0.6, reverbDecay=0.5, reverbMix=0.3),
+    P("Alpine Horn", BRASS, [("lfo1","pitch",0.003)],
+      aWave=TRI, aShape=0.15, aLevel=0.75, bTable=VOX, bPos=0.8, bLevel=0.3, air=0.08, cutoff=0.45, envAmt=0.6,
+      e1A=0.6, e1D=0.75, e1S=0.6, ampA=0.6, ampS=0.9, ampR=0.8, lfo1Rate=0.75,
+      delayTime=0.8, delayFeedback=0.35, delayMix=0.2, reverbSize=1.0, reverbDecay=0.9, reverbMix=0.55),
+    P("Brass Pad", BRASS, [],
+      aWave=SAW, aDetune=0.5, aLevel=0.7, bTable=REED, bPos=0.3, bUnison=0.6, bLevel=0.35, cutoff=0.45, envAmt=0.65,
+      e1A=0.75, e1D=0.85, e1S=0.6, ampA=0.72, ampS=0.95, ampR=0.8, chorusMix=0.45,
+      reverbSize=0.85, reverbDecay=0.8, reverbMix=0.5),
+
+    #============================================================== WORLD / ASIA
+    P("Koto", ASIA, [("press","pitch",0.083)], **string(0.55, ring=0.8, rel=0.7,
+      reverbSize=0.6, reverbDecay=0.6, reverbMix=0.35)),
+    P("Guzheng", ASIA, [("press","pitch",0.083)], **string(0.62, det=0.05, ring=0.85, rel=0.8, cutoff=0.95,
+      delaySync=2, delayFeedback=0.25, delayMix=0.12, reverbSize=0.75, reverbDecay=0.75, reverbMix=0.4)),
+    P("Pipa", ASIA, [], **string(0.5, ring=0.7, rel=0.5, ampS=0.4, cutoff=0.85, reverbSize=0.5, reverbMix=0.3)),
+    P("Shakuhachi", ASIA, [("lfo1","pitch",0.006),("press","air",0.4),("env1","air",0.3)],
+      aWave=SIN, aShape=0.15, aLevel=0.55, bTable=AIR, bPos=0.15, bLevel=0.35, air=0.55, cutoff=0.62, res=0.1,
+      e1A=0.3, e1D=0.55, e1S=0.2, ampA=0.55, ampS=0.9, ampR=0.6, glide=0.18, lfo1Rate=0.74,
+      reverbSize=0.8, reverbDecay=0.75, reverbMix=0.45),
+    P("Erhu", ASIA, [("lfo1","pitch",0.015),("press","pitch",0.03),("press","cutoff",0.2)],
+      aWave=SAW, aDetune=0.02, aShape=0.3, aLevel=0.75, bTable=VOX, bPos=0.35, bLevel=0.35, cutoff=0.64, res=0.35,
+      envAmt=0.55, ampA=0.45, ampS=0.95, ampR=0.5, glide=0.4, lfo1Rate=0.8, reverbSize=0.65, reverbMix=0.32),
+    P("Gamelan", ASIA, [("lfo2","bPos",0.1)],
+      aWave=SIN, aShape=0.35, aDetune=0.12, aLevel=0.5, bTable=GLASS, bPos=0.55, bLevel=0.5, cutoff=0.85,
+      ampA=0.0, ampD=0.88, ampS=0.0, ampR=0.85, reverbSize=0.75, reverbDecay=0.8, reverbMix=0.45),
+    P("Hulusi", ASIA, [("lfo1","pitch",0.006)],
+      aWave=SIN, aLevel=0.3, bTable=REED, bPos=0.45, bLevel=0.7, air=0.2, cutoff=0.6, ampA=0.45, ampS=0.9, ampR=0.5,
+      glide=0.15, lfo1Rate=0.78, reverbSize=0.6, reverbMix=0.35),
+    P("Shamisen", ASIA, [], **string(0.74, ring=0.62, rel=0.4, ampS=0.15, reverbSize=0.45, reverbMix=0.25)),
+
+    #============================================================== WORLD / INDIA & MIDDLE EAST
+    P("Sitar", INDIA, [("press","pitch",0.17)], **string(0.95, det=0.08, ring=0.9, rel=0.82, cutoff=0.95,
+      reverbSize=0.7, reverbDecay=0.75, reverbMix=0.38)),
+    P("Tanpura Drone", INDIA, [], **string(0.98, det=0.1, ring=0.9, rel=0.9, cutoff=0.95,
+      arpOn=1, arpMode=0, arpRate=0, arpGate=1.0, arpHold=1, reverbSize=0.8, reverbDecay=0.8, reverbMix=0.45)),
+    P("Santoor", INDIA, [], **string(0.62, det=0.35, ring=0.85, rel=0.85, cutoff=0.95,
+      delaySync=1, delayFeedback=0.2, delayMix=0.1, reverbSize=0.7, reverbDecay=0.75, reverbMix=0.4)),
+    P("Bansuri", INDIA, [("lfo1","pitch",0.007),("press","air",0.35),("env1","air",0.25)],
+      aWave=SIN, aShape=0.05, aLevel=0.6, bTable=AIR, bPos=0.05, bLevel=0.3, air=0.4, cutoff=0.62,
+      e1A=0.3, e1D=0.55, e1S=0.15, ampA=0.42, ampS=0.9, ampR=0.55, glide=0.25, lfo1Rate=0.77,
+      reverbSize=0.75, reverbDecay=0.7, reverbMix=0.42),
+    P("Shehnai", INDIA, [("lfo1","pitch",0.012),("press","cutoff",0.2)],
+      aWave=SAW, aShape=0.6, aLevel=0.25, bTable=REED, bPos=0.85, bLevel=0.7, drive=0.35, cutoff=0.66, res=0.3,
+      ampA=0.38, ampS=0.9, ampR=0.42, glide=0.3, lfo1Rate=0.8, reverbSize=0.55, reverbMix=0.3),
+    P("Oud", INDIA, [("press","pitch",0.083)], **string(0.28, det=0.15, ring=0.75, rel=0.6, cutoff=0.85,
+      reverbSize=0.55, reverbMix=0.3)),
+    P("Ney", INDIA, [("lfo1","pitch",0.006),("press","air",0.3)],
+      aWave=SIN, aLevel=0.45, bTable=AIR, bPos=0.25, bLevel=0.4, air=0.7, cutoff=0.58, res=0.15,
+      ampA=0.6, ampS=0.9, ampR=0.6, glide=0.2, lfo1Rate=0.72, reverbSize=0.85, reverbDecay=0.8, reverbMix=0.5),
+    P("Duduk", INDIA, [("lfo1","pitch",0.009),("press","cutoff",0.25)],
+      aWave=TRI, aShape=0.2, aLevel=0.4, bTable=REED, bPos=0.3, bLevel=0.6, air=0.15, cutoff=0.5, res=0.25,
+      envAmt=0.55, e1A=0.5, ampA=0.5, ampS=0.95, ampR=0.6, glide=0.25, lfo1Rate=0.76,
+      reverbSize=0.75, reverbDecay=0.75, reverbMix=0.42),
+    P("Qanun", INDIA, [], **string(0.58, det=0.22, ring=0.82, rel=0.7, cutoff=0.95, reverbSize=0.6, reverbMix=0.35)),
+
+    #============================================================== WORLD / AFRICA
+    P("Kalimba", AFRICA, [],
+      aWave=SIN, aShape=0.25, aLevel=0.6, bTable=GLASS, bPos=0.15, bLevel=0.35, cutoff=0.85, envAmt=0.6,
+      e1A=0.0, e1D=0.55, e1S=0.0, ampA=0.0, ampD=0.72, ampS=0.0, ampR=0.7, reverbSize=0.6, reverbMix=0.35),
+    P("Kora", AFRICA, [], **string(0.4, ring=0.85, rel=0.8, delaySync=2, delayFeedback=0.2, delayMix=0.1,
+      reverbSize=0.6, reverbDecay=0.65, reverbMix=0.35)),
+    P("Balafon", AFRICA, [("env1","air",0.4)],
+      aWave=TRI, aShape=0.35, aLevel=0.6, bTable=VOX, bPos=0.7, bLevel=0.2, air=0.08, cutoff=0.75, envAmt=0.65,
+      e1A=0.0, e1D=0.45, e1S=0.0, ampA=0.0, ampD=0.62, ampS=0.0, ampR=0.5, drive=0.2, reverbSize=0.45, reverbMix=0.25),
+    P("Mbira", AFRICA, [], **string(0.78, det=0.1, ring=0.8, rel=0.6, cutoff=0.85, reverbSize=0.55, reverbMix=0.3)),
+    P("Sahel Flute", AFRICA, [("lfo1","pitch",0.008),("env1","air",0.4),("press","air",0.3)],
+      aWave=SIN, aLevel=0.5, bTable=VOX, bPos=0.9, bLevel=0.3, air=0.55, cutoff=0.65, e1A=0.3, e1D=0.5, e1S=0.2,
+      ampA=0.4, ampS=0.85, ampR=0.45, glide=0.2, lfo1Rate=0.79, reverbSize=0.6, reverbMix=0.35),
+
+    #============================================================== WORLD / EUROPE & CELTIC
+    P("Tin Whistle", EUROPE, [("lfo1","pitch",0.005),("env1","air",0.35)],
+      aWave=SIN, aTune=0.75, aLevel=0.6, air=0.3, bTable=AIR, bPos=0.1, bLevel=0.25, cutoff=0.75,
+      e1A=0.25, e1D=0.45, e1S=0.15, ampA=0.3, ampS=0.9, ampR=0.4, glide=0.08, lfo1Rate=0.8,
+      reverbSize=0.6, reverbMix=0.32),
+    P("Highland Pipes", EUROPE, [("lfo2","pitch",0.002)],
+      aWave=SAW, aDetune=0.05, aLevel=0.35, bTable=REED, bPos=0.75, bUnison=0.15, bLevel=0.65, drive=0.4,
+      cutoff=0.72, res=0.3, ampA=0.3, ampS=1.0, ampR=0.35, glide=0.05, reverbSize=0.75, reverbMix=0.35),
+    P("Accordion", EUROPE, [("press","amp",0.3)],
+      aWave=SAW, aShape=0.2, aDetune=0.35, aLevel=0.45, bTable=REED, bPos=0.4, bUnison=0.3, bLevel=0.55,
+      cutoff=0.68, ampA=0.38, ampS=0.95, ampR=0.4, chorusMix=0.2, reverbSize=0.45, reverbMix=0.25),
+    P("Hurdy Gurdy", EUROPE, [("lfo1","amp",-0.15),("rand","bWarp",0.1)],
+      aWave=SAW, aDetune=0.1, aShape=0.2, aLevel=0.7, bTable=REED, bPos=0.6, bLevel=0.4, drive=0.35, cutoff=0.62,
+      res=0.35, ampA=0.42, ampS=1.0, ampR=0.4, air=0.12, lfo1Rate=0.85, randRate=0.8, reverbSize=0.6, reverbMix=0.3),
+    P("Celtic Harp", EUROPE, [], **string(0.42, ring=0.88, rel=0.85, delaySync=4, delayFeedback=0.25, delayMix=0.1,
+      reverbSize=0.8, reverbDecay=0.8, reverbMix=0.45)),
+    P("Hammered Dulcimer", EUROPE, [], **string(0.65, det=0.3, ring=0.85, rel=0.85, cutoff=0.95,
+      reverbSize=0.65, reverbDecay=0.7, reverbMix=0.4)),
+    P("Mandolin", EUROPE, [], **string(0.6, det=0.25, ring=0.7, rel=0.45, reverbSize=0.5, reverbMix=0.28)),
+    P("Bouzouki", EUROPE, [], **string(0.63, det=0.35, ring=0.8, rel=0.55, cutoff=0.92, chorusMix=0.2,
+      reverbSize=0.6, reverbMix=0.32)),
+
+    #============================================================== WORLD / AMERICAS & ISLANDS
+    P("Pan Flute", AMERICAS, [("lfo1","pitch",0.004),("env1","air",0.5)],
+      aWave=SIN, aLevel=0.55, bTable=AIR, bPos=0.2, bLevel=0.3, air=0.5, cutoff=0.66, e1A=0.3, e1D=0.45, e1S=0.15,
+      ampA=0.38, ampS=0.88, ampR=0.6, lfo1Rate=0.78, reverbSize=0.8, reverbMix=0.45),
+    P("Charango", AMERICAS, [], **string(0.6, det=0.28, ring=0.7, rel=0.5, cutoff=0.92, reverbSize=0.5, reverbMix=0.28)),
+    P("Steel Pan", AMERICAS, [("env1","bPos",0.2)],
+      aWave=SIN, aShape=0.45, aLevel=0.55, bTable=GLASS, bPos=0.3, bLevel=0.45, cutoff=0.75, envAmt=0.62,
+      e1A=0.0, e1D=0.55, e1S=0.3, ampA=0.05, ampD=0.75, ampS=0.25, ampR=0.6, reverbSize=0.55, reverbMix=0.3),
+    P("Ukulele", AMERICAS, [], **string(0.22, ring=0.68, rel=0.45, cutoff=0.85, reverbSize=0.45, reverbMix=0.25)),
+    P("Island Slide", AMERICAS, [("lfo1","pitch",0.01),("press","pitch",0.083)], **string(0.55, ring=0.85, rel=0.7,
+      glide=0.45, lfo1Rate=0.75, delaySync=3, delayFeedback=0.3, delayMix=0.15, reverbSize=0.6, reverbMix=0.35)),
+    P("Quena", AMERICAS, [("lfo1","pitch",0.008),("env1","air",0.3),("press","air",0.25)],
+      aWave=SIN, aLevel=0.55, bTable=AIR, bPos=0.35, bLevel=0.35, air=0.45, cutoff=0.68, e1A=0.3, e1D=0.5, e1S=0.2,
+      ampA=0.4, ampS=0.9, ampR=0.5, glide=0.15, lfo1Rate=0.8, reverbSize=0.85, reverbDecay=0.8, reverbMix=0.45),
+
+    #============================================================== ATMOSPHERES
+    P("Cloud Forest", ATMOS, [("lfo1","bPos",0.5),("lfo2","cutoff",0.1),("rand","pan",0.3)],
+      aWave=SIN, aTune=0.75, aLevel=0.2, bTable=VOX, bPos=0.5, bUnison=0.8, bLevel=0.75, air=0.3, cutoff=0.6,
+      ampA=0.85, ampS=1.0, ampR=0.9, lfo1Rate=0.2, lfo2Rate=0.25, chorusMix=0.4, delaySync=5, delayFeedback=0.5,
+      delayMix=0.25, reverbSize=1.0, reverbDecay=0.9, reverbShimmer=0.4, reverbMix=0.65),
+    P("Deep Space Hum", ATMOS, [("lfo1","cutoff",0.15),("lfo2","bWarp",0.4)],
+      aWave=SAW, aTune=0.25, aDetune=0.7, aLevel=0.6, bTable=GLASS, bPos=0.8, bUnison=0.5, bLevel=0.4, cutoff=0.38,
+      res=0.45, ampA=0.88, ampS=1.0, ampR=0.92, lfo1Rate=0.15, reverbSize=1.0, reverbDecay=0.95, reverbDamp=0.7, reverbMix=0.7),
+    P("Rain Glass", ATMOS, [("rand","bPos",0.3),("rand","pan",0.6),("rand","cutoff",0.1)],
+      aLevel=0.0, bTable=GLASS, bPos=0.7, bUnison=0.4, bLevel=0.7, air=0.25, cutoff=0.78, ampA=0.7, ampS=0.9, ampR=0.9,
+      randRate=0.85, randSmooth=0.1, delaySync=1, delayFeedback=0.55, delayMix=0.3,
+      reverbSize=0.9, reverbDecay=0.85, reverbShimmer=0.25, reverbMix=0.5),
+    P("Polar Wind", ATMOS, [("lfo1","cutoff",0.25),("lfo2","res",0.2),("rand","pan",0.4)],
+      aLevel=0.0, bTable=AIR, bLevel=0.15, air=1.0, cutoff=0.55, res=0.6, ampA=0.85, ampS=1.0, ampR=0.9,
+      lfo1Rate=0.25, lfo2Rate=0.3, reverbSize=1.0, reverbDecay=0.9, reverbMix=0.6),
+    P("Sunken Temple", ATMOS, [("lfo1","bPos",0.35)],
+      aWave=TRI, aTune=0.25, aLevel=0.4, bTable=VOX, bPos=0.8, bUnison=0.6, bLevel=0.7, cutoff=0.48, res=0.3, drive=0.15,
+      ampA=0.82, ampS=1.0, ampR=0.9, lfo1Rate=0.18, delaySync=6, delayFeedback=0.45, delayMix=0.2,
+      reverbSize=1.0, reverbDecay=0.92, reverbDamp=0.75, reverbMix=0.6),
+    P("Hollow Earth", ATMOS, [("lfo2","bWarp",0.4),("lfo1","cutoff",0.1)],
+      aWave=SAW, aTune=0.25, aDetune=0.5, aLevel=0.4, bTable=REED, bPos=0.5, bUnison=1.0, bWarp=0.4, bLevel=0.6,
+      cutoff=0.44, res=0.25, ampA=0.85, ampS=1.0, ampR=0.9, lfo2Rate=0.2, reverbSize=0.95, reverbDecay=0.9, reverbMix=0.55),
+    P("Starfield", ATMOS, [("rand","pan",0.7),("lfo1","bPos",0.2)],
+      aWave=SIN, aTune=1.0, aLevel=0.25, bTable=GLASS, bPos=0.9, bUnison=0.5, bLevel=0.5, cutoff=0.85,
+      ampA=0.6, ampD=0.85, ampS=0.5, ampR=0.92, randRate=0.7, delaySync=3, delayFeedback=0.6, delayMix=0.35,
+      reverbSize=0.95, reverbDecay=0.9, reverbShimmer=0.7, reverbMix=0.65),
+    P("Morning Fog", ATMOS, [("lfo1","bPos",0.3),("lfo2","cutoff",0.08)],
+      aLevel=0.0, bTable=AIR, bPos=0.4, bUnison=0.9, bLevel=0.8, air=0.2, cutoff=0.5, ampA=0.9, ampS=1.0, ampR=0.92,
+      lfo1Rate=0.15, chorusMix=0.6, chorusDepth=0.7, reverbSize=0.9, reverbDecay=0.85, reverbDamp=0.7, reverbMix=0.6),
+    P("Tidal Drift", ATMOS, [("lfo1","cutoff",0.3),("lfo1","pan",0.4),("lfo2","bPos",0.3)],
+      aWave=SAW, aDetune=0.6, aShape=0.5, aLevel=0.5, bTable=VOX, bPos=0.3, bLevel=0.5, cutoff=0.5, res=0.35,
+      ampA=0.85, ampS=1.0, ampR=0.9, lfo1Rate=0.12, lfo1Shape=1, delaySync=6, delayFeedback=0.5, delayMix=0.2,
+      reverbSize=0.9, reverbDecay=0.85, reverbMix=0.55),
+    P("Aurora Veil", ATMOS, [("lfo1","bWarp",0.4),("lfo2","pitch",0.003)],
+      aWave=SIN, aTune=0.6458, aLevel=0.25, bTable=GLASS, bPos=0.3, bUnison=0.9, bLevel=0.7, cutoff=0.7,
+      ampA=0.88, ampS=1.0, ampR=0.92, lfo1Rate=0.18, reverbSize=1.0, reverbDecay=0.95, reverbShimmer=0.9, reverbMix=0.7),
+
+    #============================================================== LO-FI
+    P("Dusty Keys", LOFI, [("lfo2","pitch",0.012),("vel","cutoff",0.15)],
+      aWave=TRI, aShape=0.35, aLevel=0.7, bTable=GLASS, bPos=0.15, bLevel=0.2, cutoff=0.5, res=0.1, drive=0.25,
+      envAmt=0.6, e1A=0.0, e1D=0.62, e1S=0.2, ampA=0.02, ampD=0.75, ampS=0.35, ampR=0.55, lfo2Rate=0.35, lfo2Shape=4,
+      chorusMix=0.35, reverbSize=0.45, reverbMix=0.25),
+    P("Tape Keys", LOFI, [("vel","aShape",0.4),("lfo1","pan",0.4),("lfo2","pitch",0.01)],
+      aWave=SIN, aShape=0.35, aLevel=0.75, bTable=GLASS, bPos=0.05, bLevel=0.2, cutoff=0.6, drive=0.2,
+      ampA=0.0, ampD=0.8, ampS=0.3, ampR=0.6, lfo1Rate=0.7, chorusMix=0.25, reverbSize=0.45, reverbMix=0.25),
+    P("Cassette Pad", LOFI, [("lfo2","pitch",0.018),("lfo1","cutoff",0.06)],
+      aWave=SAW, aDetune=0.45, aShape=0.6, aLevel=0.6, bTable=AIR, bPos=0.6, bLevel=0.35, cutoff=0.45, res=0.1, drive=0.2,
+      ampA=0.7, ampS=0.9, ampR=0.75, lfo2Rate=0.4, chorusMix=0.5, reverbSize=0.6, reverbMix=0.35),
+    P("Bedroom Bass", LOFI, [],
+      aWave=SIN, aTune=0.25, aShape=0.2, aLevel=0.8, cutoff=0.45, drive=0.35, ampA=0.02, ampD=0.7, ampS=0.6, ampR=0.45,
+      glide=0.1, reverbMix=0.05),
+    P("Late Night Keys", LOFI, [("lfo1","amp",-0.15),("lfo2","pitch",0.008)],
+      aWave=SQR, aShape=0.4, aDetune=0.1, aLevel=0.5, bTable=REED, bPos=0.25, bLevel=0.35, cutoff=0.55, drive=0.35,
+      envAmt=0.62, e1A=0.0, e1D=0.6, e1S=0.3, ampA=0.0, ampD=0.75, ampS=0.4, ampR=0.5, lfo1Rate=0.75,
+      chorusMix=0.2, reverbSize=0.4, reverbMix=0.22),
+    P("Vapor Choir", LOFI, [("lfo2","pitch",0.015)],
+      aLevel=0.0, bTable=VOX, bPos=0.15, bUnison=0.7, bLevel=0.75, cutoff=0.5, drive=0.2, ampA=0.7, ampS=0.9, ampR=0.75,
+      chorusMix=0.5, delaySync=4, delayFeedback=0.4, delayMix=0.2, reverbSize=0.7, reverbMix=0.4),
+    P("Rainy Window", LOFI, [("lfo2","pitch",0.01)], **string(0.18, det=0.05, ring=0.75, rel=0.5, cutoff=0.52,
+      drive=0.15, delaySync=3, delayFeedback=0.45, delayTone=0.3, delayMix=0.25, reverbSize=0.55, reverbMix=0.3)),
+    P("Warped Music Box", LOFI, [("lfo2","pitch",0.02)],
+      aWave=SIN, aTune=1.0, aLevel=0.4, bTable=GLASS, bPos=0.45, bLevel=0.5, cutoff=0.68, ampA=0.0, ampD=0.75, ampS=0.0,
+      ampR=0.7, lfo2Rate=0.45, delaySync=2, delayFeedback=0.35, delayMix=0.2, reverbSize=0.6, reverbMix=0.35),
+    P("Sunday Organ", LOFI, [("lfo1","pan",0.25),("lfo1","pitch",0.002),("lfo2","pitch",0.008)],
+      aWave=SIN, aShape=0.1, aLevel=0.6, bTable=REED, bPos=0.1, bLevel=0.35, cutoff=0.58, drive=0.25,
+      ampA=0.08, ampS=1.0, ampR=0.4, lfo1Rate=0.78, chorusMix=0.5, chorusRate=0.7, reverbSize=0.45, reverbMix=0.25),
+    P("Lo-Fi Lead", LOFI, [("lfo2","pitch",0.012),("lfo1","pitch",0.004)],
+      aWave=SQR, aShape=0.25, aLevel=0.6, cutoff=0.5, res=0.2, drive=0.35, ampA=0.08, ampS=0.85, ampR=0.4,
+      glide=0.2, lfo1Rate=0.8, lfo2Rate=0.45, delaySync=3, delayFeedback=0.4, delayTone=0.3, delayMix=0.25,
+      reverbSize=0.4, reverbMix=0.2),
+
+    #============================================================== CHOIRS & VOICES
+    P("Cathedral Choir", CHOIR, [("lfo1","pitch",0.004),("lfo2","bPos",0.06)],
+      aWave=SAW, aDetune=0.3, aLevel=0.15, bTable=VOX, bPos=0.05, bUnison=0.9, bLevel=0.85, air=0.12, cutoff=0.66,
+      ampA=0.72, ampS=0.95, ampR=0.82, lfo1Rate=0.78, chorusMix=0.5, reverbSize=1.0, reverbDecay=0.9, reverbMix=0.55),
+    P("Ooh Choir", CHOIR, [("lfo1","pitch",0.004)],
+      aLevel=0.0, bTable=VOX, bPos=0.95, bUnison=0.8, bLevel=0.85, air=0.1, cutoff=0.6, ampA=0.7, ampS=0.95, ampR=0.8,
+      lfo1Rate=0.76, chorusMix=0.5, reverbSize=0.85, reverbDecay=0.8, reverbMix=0.5),
+    P("Vowel Morph Choir", CHOIR, [("wheel","bPos",0.5),("press","bPos",0.4),("lfo1","bPos",0.25)],
+      aLevel=0.0, bTable=VOX, bPos=0.5, bUnison=0.8, bLevel=0.85, cutoff=0.68, ampA=0.65, ampS=0.95, ampR=0.8,
+      lfo1Rate=0.2, reverbSize=0.9, reverbDecay=0.8, reverbMix=0.5),
+    P("Male Chant", CHOIR, [("lfo1","pitch",0.003)],
+      aWave=SAW, aTune=0.25, aDetune=0.2, aLevel=0.25, bTable=VOX, bPos=0.75, bUnison=0.6, bLevel=0.85, cutoff=0.5,
+      res=0.15, ampA=0.6, ampS=1.0, ampR=0.75, lfo1Rate=0.75, reverbSize=1.0, reverbDecay=0.92, reverbDamp=0.65, reverbMix=0.55),
+    P("Angel Voices", CHOIR, [("lfo1","bPos",0.15)],
+      aWave=SIN, aTune=0.75, aLevel=0.2, bTable=VOX, bPos=0.4, bUnison=0.85, bLevel=0.75, air=0.25, cutoff=0.78,
+      ampA=0.8, ampS=0.95, ampR=0.88, lfo1Rate=0.25, reverbSize=1.0, reverbDecay=0.9, reverbShimmer=0.6, reverbMix=0.6),
+    P("Whisper Pad", CHOIR, [("lfo1","bPos",0.4),("rand","pan",0.4)],
+      aLevel=0.0, bTable=VOX, bPos=0.3, bLevel=0.35, air=0.85, cutoff=0.62, res=0.25, ampA=0.75, ampS=1.0, ampR=0.85,
+      lfo1Rate=0.3, reverbSize=0.85, reverbDecay=0.8, reverbMix=0.55),
+    P("Throat Singer", CHOIR, [("lfo1","cutoff",0.15),("press","cutoff",0.3)],
+      aWave=SAW, aTune=0.25, aLevel=0.4, bTable=VOX, bPos=0.7, bLevel=0.8, drive=0.3, cutoff=0.6, res=0.75,
+      ampA=0.5, ampS=1.0, ampR=0.6, lfo1Rate=0.25, reverbSize=0.75, reverbMix=0.4),
+    P("Gospel Hum", CHOIR, [("lfo1","pitch",0.005)],
+      aWave=SIN, aLevel=0.35, bTable=VOX, bPos=0.9, bUnison=0.6, bLevel=0.7, cutoff=0.55, ampA=0.55, ampS=0.95, ampR=0.7,
+      lfo1Rate=0.8, chorusMix=0.4, reverbSize=0.7, reverbMix=0.4),
+
+    #============================================================== MALLETS
+    P("Marimba", MALLET, [("env1","air",0.3)],
+      aWave=SIN, aShape=0.2, aLevel=0.75, bTable=VOX, bPos=0.85, bLevel=0.15, air=0.05, cutoff=0.75, envAmt=0.62,
+      e1A=0.0, e1D=0.45, e1S=0.0, ampA=0.0, ampD=0.65, ampS=0.0, ampR=0.6, reverbSize=0.45, reverbMix=0.25),
+    P("Vibraphone", MALLET, [("lfo1","amp",-0.3)],
+      aWave=SIN, aShape=0.1, aLevel=0.65, bTable=GLASS, bPos=0.1, bLevel=0.3, cutoff=0.8,
+      ampA=0.0, ampD=0.85, ampS=0.15, ampR=0.75, lfo1Rate=0.73, reverbSize=0.55, reverbMix=0.32),
+    P("Glockenspiel", MALLET, [],
+      aWave=SIN, aTune=0.75, aLevel=0.35, bTable=GLASS, bPos=0.75, bLevel=0.7, cutoff=0.92,
+      ampA=0.0, ampD=0.75, ampS=0.0, ampR=0.75, reverbSize=0.6, reverbMix=0.35),
+    P("Music Box", MALLET, [],
+      aWave=SIN, aTune=1.0, aShape=0.2, aLevel=0.4, bTable=GLASS, bPos=0.6, bLevel=0.55, cutoff=0.88,
+      ampA=0.0, ampD=0.7, ampS=0.0, ampR=0.72, delaySync=2, delayFeedback=0.25, delayMix=0.1, reverbSize=0.65, reverbMix=0.38),
+    P("Handpan", MALLET, [("env1","bPos",0.15)],
+      aWave=SIN, aShape=0.3, aDetune=0.08, aLevel=0.6, bTable=GLASS, bPos=0.25, bLevel=0.35, cutoff=0.72, envAmt=0.6,
+      e1A=0.0, e1D=0.6, e1S=0.1, ampA=0.02, ampD=0.85, ampS=0.0, ampR=0.8, reverbSize=0.7, reverbDecay=0.75, reverbMix=0.42),
+    P("Celesta", MALLET, [],
+      aWave=SIN, aTune=0.75, aLevel=0.4, bTable=GLASS, bPos=0.35, bLevel=0.55, cutoff=0.85,
+      ampA=0.0, ampD=0.72, ampS=0.0, ampR=0.6, reverbSize=0.55, reverbMix=0.3),
+    P("Tubular Bells", MALLET, [],
+      aWave=SIN, aShape=0.4, aLevel=0.35, bTable=GLASS, bPos=0.85, bUnison=0.1, bLevel=0.65, cutoff=0.85,
+      ampA=0.0, ampD=0.9, ampS=0.0, ampR=0.9, reverbSize=0.85, reverbDecay=0.85, reverbMix=0.5),
+    P("Wood Bars", MALLET, [("env1","air",0.25)],
+      aWave=TRI, aShape=0.5, aLevel=0.65, cutoff=0.65, envAmt=0.65, e1A=0.0, e1D=0.42, e1S=0.0,
+      ampA=0.0, ampD=0.58, ampS=0.0, ampR=0.45, drive=0.15, reverbSize=0.4, reverbMix=0.22),
+
+    #============================================================== DRONES & BASS
+    P("Shruti Box", DRONE, [("lfo1","amp",-0.12)],
+      aWave=SAW, aShape=0.4, aDetune=0.25, aLevel=0.35, bTable=REED, bPos=0.3, bUnison=0.4, bLevel=0.65, air=0.1,
+      cutoff=0.55, ampA=0.75, ampS=1.0, ampR=0.8, lfo1Rate=0.35, reverbSize=0.75, reverbMix=0.4),
+    P("Earth Drone", DRONE, [("lfo1","bPos",0.3),("lfo2","cutoff",0.1)],
+      aWave=SAW, aTune=0.25, aDetune=0.5, aShape=0.3, aLevel=0.6, bTable=VOX, bPos=0.8, bUnison=0.5, bLevel=0.5,
+      cutoff=0.42, res=0.35, ampA=0.85, ampS=1.0, ampR=0.9, lfo1Rate=0.15, reverbSize=0.9, reverbMix=0.5),
+    P("Didgeridoo", DRONE, [("lfo1","bPos",0.4),("lfo1","cutoff",0.15),("press","bPos",0.4)],
+      aWave=SAW, aLevel=0.45, aDetune=0.0, bTable=VOX, bPos=0.6, bLevel=0.7, drive=0.35, cutoff=0.45, res=0.55,
+      ampA=0.4, ampS=1.0, ampR=0.5, lfo1Rate=0.55, reverbSize=0.55, reverbMix=0.3),
+    P("Sub Bass", DRONE, [],
+      aWave=SIN, aShape=0.1, aLevel=0.85, aDetune=0.0, cutoff=0.5, ampA=0.02, ampD=0.6, ampS=0.9, ampR=0.4,
+      velSens=0.3, reverbMix=0.0),
+    P("Pluck Bass", DRONE, [], **string(0.3, ring=0.7, rel=0.4, aLevel=0.95, cutoff=0.6, drive=0.2, reverbMix=0.05)),
+    P("Round Bass", DRONE, [],
+      aWave=SAW, aDetune=0.1, aLevel=0.8, cutoff=0.35, res=0.35, drive=0.3, envAmt=0.72, e1A=0.0, e1D=0.55, e1S=0.2,
+      ampA=0.0, ampD=0.65, ampS=0.75, ampR=0.4, glide=0.08, reverbMix=0.05),
+    P("Upright Bass", DRONE, [], **string(0.12, ring=0.72, rel=0.45, aLevel=0.95, cutoff=0.55,
+      reverbSize=0.3, reverbMix=0.15)),
+    P("Om Drone", DRONE, [("lfo1","bPos",0.15)],
+      aWave=SIN, aTune=0.25, aLevel=0.4, bTable=VOX, bPos=0.8, bUnison=0.6, bLevel=0.8, cutoff=0.45,
+      ampA=0.88, ampS=1.0, ampR=0.92, lfo1Rate=0.1, reverbSize=1.0, reverbDecay=0.95, reverbMix=0.6),
+
+    #============================================================== ARPS & MOTION
+    P("Rain Garden Arp", ARP, [], **string(0.5, det=0.1, ring=0.75, rel=0.6,
+      arpOn=1, arpMode=3, arpRate=3, arpOctaves=1, arpGate=0.5,
+      delaySync=3, delayFeedback=0.45, delayMix=0.3, reverbSize=0.75, reverbMix=0.45)),
+    P("Glass Ladder", ARP, [("lfo1","bPos",0.3)],
+      aWave=SIN, aTune=0.75, aLevel=0.3, bTable=GLASS, bPos=0.5, bLevel=0.7, ampA=0.0, ampD=0.62, ampS=0.2, ampR=0.6,
+      lfo1Rate=0.3, arpOn=1, arpMode=0, arpRate=3, arpOctaves=1, arpGate=0.4,
+      delaySync=2, delayFeedback=0.4, delayMix=0.25, reverbSize=0.7, reverbMix=0.4),
+    P("Kalimba Cascade", ARP, [],
+      aWave=SIN, aShape=0.25, aLevel=0.6, bTable=GLASS, bPos=0.15, bLevel=0.35, cutoff=0.85, envAmt=0.6,
+      e1A=0.0, e1D=0.55, e1S=0.0, ampA=0.0, ampD=0.72, ampS=0.0, ampR=0.7,
+      arpOn=1, arpMode=2, arpRate=3, arpOctaves=0, arpGate=0.5,
+      delaySync=3, delayFeedback=0.35, delayMix=0.2, reverbSize=0.6, reverbMix=0.35),
+    P("Pulse Garden", ARP, [("lfo1","cutoff",0.2)],
+      aWave=SQR, aShape=0.4, aLevel=0.6, cutoff=0.45, res=0.4, envAmt=0.7, e1A=0.0, e1D=0.5, e1S=0.0,
+      ampA=0.0, ampD=0.6, ampS=0.3, ampR=0.45, lfo1Rate=0.2, arpOn=1, arpMode=0, arpRate=3, arpOctaves=0, arpGate=0.6,
+      delaySync=3, delayFeedback=0.5, delayMix=0.3, reverbSize=0.6, reverbMix=0.3),
+    P("Triplet Stream", ARP, [],
+      aWave=SIN, aShape=0.4, aLevel=0.6, bTable=GLASS, bPos=0.2, bLevel=0.3, ampA=0.0, ampD=0.6, ampS=0.2, ampR=0.5,
+      arpOn=1, arpMode=0, arpRate=4, arpOctaves=2, arpGate=0.45,
+      delaySync=4, delayFeedback=0.4, delayMix=0.2, reverbSize=0.7, reverbMix=0.4),
+    P("Harp Glissando", ARP, [], **string(0.35, ring=0.85, rel=0.8,
+      arpOn=1, arpMode=0, arpRate=5, arpOctaves=3, arpGate=0.8, reverbSize=0.8, reverbMix=0.45)),
+    P("Sequenced Bass", ARP, [],
+      aWave=SAW, aTune=0.25, aLevel=0.8, cutoff=0.38, res=0.4, drive=0.25, envAmt=0.72, e1A=0.0, e1D=0.48, e1S=0.1,
+      ampA=0.0, ampD=0.55, ampS=0.5, ampR=0.35, arpOn=1, arpMode=4, arpRate=3, arpOctaves=0, arpGate=0.55, reverbMix=0.1),
+    P("Firefly Swarm", ARP, [("rand","pan",0.8)],
+      aWave=SIN, aTune=1.0, aLevel=0.3, bTable=GLASS, bPos=0.8, bLevel=0.6, ampA=0.0, ampD=0.55, ampS=0.0, ampR=0.6,
+      randRate=0.9, arpOn=1, arpMode=3, arpRate=5, arpOctaves=2, arpGate=0.3, arpHold=1,
+      delaySync=1, delayFeedback=0.5, delayMix=0.3, reverbSize=0.85, reverbShimmer=0.4, reverbMix=0.55),
+
+    #============================================================== MPE EXPRESSIVE
+    # Pressure, slide (the up-down axis) and per-note bend each shape the note under that finger.
+    P("MPE Breath Pad", MPE, [("press","amp",0.9),("press","air",0.4),("slide","bPos",0.5),("slide","cutoff",0.3)],
+      aWave=SIN, aLevel=0.25, bTable=VOX, bPos=0.4, bUnison=0.6, bLevel=0.7, air=0.2, cutoff=0.45,
+      ampA=0.5, ampS=0.6, ampR=0.75, reverbSize=0.85, reverbMix=0.5),
+    P("MPE Cello", MPE, [("press","amp",0.8),("press","cutoff",0.35),("slide","aShape",0.4)],
+      aWave=SAW, aDetune=0.03, aShape=0.25, aLevel=0.8, bTable=REED, bPos=0.35, bLevel=0.25, cutoff=0.42, res=0.2,
+      drive=0.15, ampA=0.35, ampS=0.55, ampR=0.6, reverbSize=0.6, reverbMix=0.3),
+    P("MPE Glass Morph", MPE, [("slide","bPos",0.7),("press","bWarp",0.5),("press","amp",0.4)],
+      aLevel=0.0, bTable=GLASS, bPos=0.2, bUnison=0.5, bLevel=0.75, cutoff=0.7, ampA=0.3, ampS=0.8, ampR=0.8,
+      reverbSize=0.85, reverbShimmer=0.4, reverbMix=0.55),
+    P("MPE Vox", MPE, [("slide","bPos",1.0),("press","amp",0.6),("press","cutoff",0.2)],
+      aWave=SAW, aDetune=0.1, aLevel=0.2, bTable=VOX, bPos=0.0, bUnison=0.4, bLevel=0.8, cutoff=0.6,
+      ampA=0.35, ampS=0.75, ampR=0.6, reverbSize=0.75, reverbMix=0.4),
+    P("MPE Sitar", MPE, [("slide","aShape",0.15),("press","cutoff",0.2)], **string(0.88, det=0.08, ring=0.9, rel=0.8,
+      cutoff=0.8, reverbSize=0.7, reverbMix=0.38)),
+    P("MPE Brass", MPE, [("press","cutoff",0.5),("press","amp",0.6),("slide","res",0.3)],
+      aWave=SAW, aDetune=0.2, aLevel=0.8, cutoff=0.35, res=0.15, drive=0.3, envAmt=0.55, ampA=0.3, ampS=0.7, ampR=0.5,
+      reverbSize=0.6, reverbMix=0.3),
+    P("MPE Flute", MPE, [("press","amp",0.8),("press","air",0.5),("slide","cutoff",0.3)],
+      aWave=SIN, aLevel=0.55, bTable=AIR, bPos=0.15, bLevel=0.35, air=0.35, cutoff=0.6, ampA=0.35, ampS=0.6, ampR=0.5,
+      reverbSize=0.75, reverbMix=0.42),
+    P("MPE Wavetable Lead", MPE, [("slide","bPos",0.6),("slide","cutoff",0.3),("press","cutoff",0.35),("press","drive",0.3)],
+      aWave=SAW, aDetune=0.25, aLevel=0.5, bTable=AIR, bPos=0.3, bLevel=0.6, cutoff=0.45, res=0.3, drive=0.2,
+      ampA=0.15, ampS=0.8, ampR=0.45, delaySync=3, delayFeedback=0.35, delayMix=0.2, reverbSize=0.6, reverbMix=0.3),
+
+    #============================================================== CINEMATIC
+    P("Rising Tide", CINE, [("env2","cutoff",0.6),("env2","pitch",0.08),("env2","air",0.4)],
+      aWave=SAW, aDetune=0.6, aLevel=0.6, bTable=AIR, bPos=0.5, bUnison=0.8, bLevel=0.4, air=0.4, cutoff=0.3, res=0.4,
+      e2A=0.88, e2D=0.9, e2S=1.0, ampA=0.85, ampS=1.0, ampR=0.8, reverbSize=1.0, reverbDecay=0.9, reverbMix=0.55),
+    P("Distant Thunder", CINE, [],
+      aWave=SAW, aTune=0.25, aDetune=0.8, aLevel=0.4, air=0.9, cutoff=0.3, res=0.2, drive=0.4, envAmt=0.65,
+      e1A=0.4, e1D=0.8, e1S=0.0, ampA=0.3, ampD=0.88, ampS=0.0, ampR=0.85,
+      reverbSize=1.0, reverbDecay=0.95, reverbDamp=0.8, reverbMix=0.6),
+    P("Epic Swell", CINE, [("lfo1","pitch",0.004)],
+      aWave=SAW, aDetune=0.5, aLevel=0.7, bTable=REED, bPos=0.3, bUnison=0.7, bLevel=0.4, cutoff=0.4, envAmt=0.72,
+      e1A=0.82, e1D=0.9, e1S=0.8, ampA=0.82, ampS=1.0, ampR=0.8, lfo1Rate=0.78, chorusMix=0.4,
+      reverbSize=0.95, reverbDecay=0.9, reverbMix=0.55),
+    P("Low Brass Hit", CINE, [("vel","cutoff",0.2)],
+      aWave=SAW, aTune=0.25, aDetune=0.3, aLevel=0.85, cutoff=0.35, drive=0.4, envAmt=0.8, e1A=0.0, e1D=0.62, e1S=0.1,
+      ampA=0.0, ampD=0.8, ampS=0.0, ampR=0.75, reverbSize=0.9, reverbDecay=0.85, reverbMix=0.5),
+    P("Suspense Strings", CINE, [("lfo1","amp",-0.45),("lfo2","pitch",0.01)],
+      aWave=SAW, aDetune=0.3, aShape=0.1, aLevel=0.7, cutoff=0.5, res=0.2, ampA=0.6, ampS=0.95, ampR=0.75,
+      lfo1Rate=0.88, lfo1Shape=1, reverbSize=0.8, reverbDecay=0.8, reverbMix=0.45),
+    P("Dark Matter", CINE, [("rand","bWarp",0.4),("lfo1","cutoff",0.15)],
+      aWave=SAW, aTune=0.25, aDetune=0.9, aLevel=0.4, bTable=GLASS, bPos=0.9, bWarp=0.6, bUnison=1.0, bLevel=0.55,
+      cutoff=0.4, res=0.5, drive=0.3, ampA=0.88, ampS=1.0, ampR=0.9, randRate=0.4, randSmooth=0.9, lfo1Rate=0.12,
+      reverbSize=1.0, reverbDecay=0.95, reverbShimmer=0.2, reverbMix=0.65),
+]
+
+# Optional per-preset volume trims, filled in after checking levels (name -> volume knob value).
+VOLUME = {}
+VOL_FILE = os.path.join (os.path.dirname (__file__), "preset_volumes.txt")
+if os.path.exists (VOL_FILE):
+    for line in open (VOL_FILE):
+        if "=" in line and not line.startswith ("#"):
+            k, v = line.rsplit ("=", 1); VOLUME[k.strip()] = float (v)
+
+def fmt (x):
+    t = ("%.4f" % x).rstrip ("0")
+    if t.endswith ("."): t += "0"
+    return t + "f"
+
+out = ["#pragma once", "",
+       "// Factory presets, second batch: strings, brass, world instruments (in regional folders), atmospheres,",
+       "// lo-fi, choirs, mallets, drones & bass, arps, MPE and cinematic sounds.",
+       "// GENERATED by tools/make_presets.py - edit that file, not this one.", "",
+       "// (included from Presets.h, inside namespace presets)", "",
+       "inline std::vector<Preset> morePresets()", "{", "    using namespace ids;", "    return {"]
+names = set()
+for name, cat, vals, slots in presets:
+    assert name not in names, name; names.add (name)
+    for k in vals: assert k in IDS, (name, k)
+    assert len (slots) <= 5, name
+    if name in VOLUME: vals = dict (vals, volume=VOLUME[name])
+    items = ", ".join ("{ %s, %s }" % (k, fmt (float (v))) for k, v in vals.items())
+    sl = ", ".join ("{ Src::%s, Dst::%s, %s }" % (s, d, fmt (float (a))) for s, d, a in slots)
+    for s, d, a in slots: assert s in SRC and d in DST, (name, s, d)
+    out.append ('        { "%s", "%s", { %s },' % (name, cat, items))
+    out.append ('          { %s } },' % sl)
+out += ["    };", "}", ""]
+dst = os.path.join (os.path.dirname (__file__), "..", "Source", "PresetsMore.h")
+open (dst, "w").write ("\n".join (out))
+print ("wrote %d presets to %s" % (len (presets), os.path.normpath (dst)))
