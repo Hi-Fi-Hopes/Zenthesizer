@@ -4,7 +4,7 @@
      GitHub Actions turns this into an Android Studio project with the Projucer, then builds the APK.
      JUCE is cloned into ./JUCE by the workflow. -->
 <JUCERPROJECT id="ZnTh01" name="Zenthesizer" projectType="audioplug" useAppConfig="0"
-              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="1.3.0"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="1.3.1"
               companyName="DIY Audio" bundleIdentifier="com.diyaudio.zenthesizer"
               pluginFormats="buildStandalone" pluginCharacteristicsValue="pluginIsSynth,pluginWantsMidiIn"
               pluginName="Zenthesizer" pluginDesc="Organic touch synthesizer" pluginManufacturer="DIY Audio"

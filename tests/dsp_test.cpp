@@ -382,11 +382,11 @@ int main()
         r.s.drums.sound[7] = (int) Sound::patch; r.s.drums.level[7] = 1.0f; r.s.drums.steps[7][0] = 2;
         r.eng.drums.setSample (7, &smp);
         r.render (24000);
-        CHECK (peak (r.L) > 0.2f && finite (r.L), "a captured patch plays from its row (peak %.2f)", peak (r.L));
+        CHECK (peak (r.L) > 0.1f && finite (r.L), "a captured patch plays from its row (peak %.2f)", peak (r.L));
         r.s.drums.decay[7] = 0.1f; r.L.clear(); r.eng.drums.setSample (7, &smp);
         r.render (96000);   // next bar
         // the hit lands at 72000 here; at DECAY 0.1 it should be gone ~6000 samples later
-        CHECK (rms (r.L, 72000 + 7000, 96000) < 1.0e-3f && rms (r.L, 72000, 72000 + 3000) > 0.05f, "DECAY shortens a patch row");
+        CHECK (rms (r.L, 72000 + 7000, 96000) < 1.0e-3f && rms (r.L, 72000, 72000 + 3000) > 0.025f, "DECAY shortens a patch row");
         r.eng.drums.setSample (7, nullptr);
         r.render (96000);
         CHECK (finite (r.L), "a patch row without a sample stays silent");
@@ -594,6 +594,26 @@ int main()
         Run g; g.s.mpe = 0;
         g.render (2400, { on (0, 57, 100, 2), on (0, 60, 100, 3), bendMsg (100, 2, 0.5f), on (200, 40, 100, 4) });
         CHECK (std::abs (g.eng.globalBendSemis() - 1.0f) < 0.01f && voiceOn (g, 4, 40) == nullptr, "MPE off: bend is global and pad notes play plates");
+    }
+
+    // 19. gain staging: a dense 6-note pad chord stays clean (no clipping), and the limiter holds -1 dBFS
+    {
+        Run r; auto& s = r.s;
+        s.aWave = WaveA::saw; s.aDetune = 0.7f; s.aLevel = 0.8f; s.bTable = 1; s.bUnison = 1.0f; s.bLevel = 0.8f; s.drive = 0.0f;
+        s.cutoff = 0.8f; s.res = 0.2f; s.ampA = 0.3f; s.ampS = 1.0f; s.reverbMix = 0.6f; s.reverbShimmer = 0.5f; s.volume = 1.0f;
+        std::vector<MidiEvent> ev;
+        for (int k : { 31, 55, 59, 62, 66, 69 }) ev.push_back (on (0, k, 127));
+        r.render (48000 * 3, ev);
+        float pk = 0.0f; for (size_t i = 0; i < r.L.size(); ++i) pk = std::max ({ pk, std::abs (r.L[i]), std::abs (r.R[i]) });
+        CHECK (pk <= 0.8915f && finite (r.L), "a loud 6-note pad at full volume never passes -1 dBFS (peak %.3f)", pk);
+        // the limiter is transparent below its ceiling: a quiet single note comes out unchanged in shape
+        Limiter lim; lim.prepare (48000.0f);
+        std::vector<float> a (4800), b (4800);
+        for (int i = 0; i < 4800; ++i) a[(size_t) i] = b[(size_t) i] = 0.5f * std::sin (0.05f * (float) i);
+        lim.process (a.data(), b.data(), 4800);
+        float diff = 0.0f; const int la = (int) (0.0015f * 48000.0f);
+        for (int i = la; i < 4800; ++i) diff = std::max (diff, std::abs (a[(size_t) i] - 0.5f * std::sin (0.05f * (float) (i - la))));
+        CHECK (diff < 1.0e-5f, "the limiter leaves signals under -1 dBFS untouched (just 1.5 ms later) (%.6f)", diff);
     }
 
     std::printf (failures == 0 ? "\nALL PASSED\n" : "\n%d FAILED\n", failures);

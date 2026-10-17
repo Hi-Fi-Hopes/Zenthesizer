@@ -186,6 +186,8 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
 
+    zen::Settings settingsSnapshot() const { return readSettings(); }   // for the developer tools
+
 private:
     zen::Settings readSettings() const;
     float v (const char* id) const;

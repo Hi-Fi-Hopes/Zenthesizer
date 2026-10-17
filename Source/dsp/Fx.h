@@ -91,6 +91,48 @@ namespace zen
     //==========================================================================
     // 8-line feedback delay network with input diffusion, damping, slow modulation
     // and an octave-up "shimmer" fed back into its input.
+    // A clean peak limiter for the very end: it looks 1.5 ms ahead and turns the level down just
+    // before a peak would go over -1 dBFS, then lets it back up over ~150 ms. Nothing is clipped,
+    // so it doesn't add the grit a clipper does on dense pads and stacked loops.
+    struct Limiter
+    {
+        void prepare (float sampleRate)
+        {
+            la = std::max (8, (int) (0.0015f * sampleRate));
+            dL.assign ((size_t) la, 0.0f); dR.assign ((size_t) la, 0.0f); req.assign ((size_t) la, 1.0f);
+            w = 0; g = 1.0f;
+            att = 1.0f - std::exp (-8.0f / (float) la);   // fully down by the time the peak arrives
+            rel = std::exp (-1.0f / (0.15f * sampleRate));
+        }
+
+        void process (float* L, float* R, int n) noexcept
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                const float pk = std::max (std::abs (L[i]), std::abs (R[i]));
+                req[(size_t) w] = pk > ceiling ? ceiling / pk : 1.0f;
+                float m = 1.0f;
+                for (float r : req) m = std::min (m, r);          // the most reduction needed in the next 1.5 ms
+                if (m < g) g += (m - g) * att;                  // come down before the peak arrives
+                else       g = m + (g - m) * rel;               // then recover gently
+                const float oL = dL[(size_t) w] * g, oR = dR[(size_t) w] * g;
+                dL[(size_t) w] = L[i]; dR[(size_t) w] = R[i];
+                if (++w >= la) w = 0;
+                L[i] = std::max (-1.0f, std::min (1.0f, oL));     // a last safety net; the gain has normally handled it
+                R[i] = std::max (-1.0f, std::min (1.0f, oR));
+            }
+            reduction = g;
+        }
+
+        float reduction = 1.0f;   // current gain (1 = not limiting), for metering
+        static constexpr float ceiling = 0.891f;   // -1 dBFS
+
+    private:
+        std::vector<float> dL, dR, req;
+        int la = 64, w = 0;
+        float g = 1.0f, att = 0.1f, rel = 0.999f;
+    };
+
     struct Reverb
     {
         static constexpr int N = 8;

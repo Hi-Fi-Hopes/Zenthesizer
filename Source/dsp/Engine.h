@@ -60,7 +60,7 @@ namespace zen
         void prepare (double sampleRate, bool lightweight = false)
         {
             fs = (float) sampleRate;
-            chorus.prepare (fs); delay.prepare (fs); reverb.prepare (fs);
+            chorus.prepare (fs); delay.prepare (fs); reverb.prepare (fs); limiter.prepare (fs);
             looper.prepare (fs, lightweight ? 0.5f : 45.0f);
             drums.prepare (fs);
             drumL.assign (4096, 0.0f); drumR.assign (4096, 0.0f);
@@ -128,11 +128,7 @@ namespace zen
                 reverb.process (L, R, len, s.reverbSize, s.reverbDecay, s.reverbDamp, s.reverbShimmer,
                                 clamp01 (s.reverbMix + gMod[(int) Dst::reverbMix]));
                 const float vol = dbToGain (volumeDb (s.volume));
-                for (int i = 0; i < len; ++i)
-                {
-                    L[i] = softClip (L[i] * vol);
-                    R[i] = softClip (R[i] * vol);
-                }
+                for (int i = 0; i < len; ++i) { L[i] *= vol; R[i] *= vol; }   // no clipping here: the limiter at the end catches peaks
                 // the drums: own clock (or the host's), bar lines for the looper
                 int bars[DrumMachine::maxBars]; int numBars = 0;
                 const float drumBpm = s.bpm > 1.0f ? s.bpm : s.drums.tempo;
@@ -141,10 +137,10 @@ namespace zen
 
                 // the looper records what you hear and plays it back on top, untouched by preset changes
                 looper.process (L, R, len, s.loopLevel, bars, numBars, s.drums.playing);
+                for (int i = 0; i < len; ++i) { L[i] += drumL[(size_t) i] * voiceHeadroom; R[i] += drumR[(size_t) i] * voiceHeadroom; }   // same headroom as the synth, so the balance is unchanged
+                limiter.process (L, R, len);   // a clean peak limiter instead of a clipper: chords and loops stay undistorted
                 for (int i = 0; i < len; ++i)
                 {
-                    L[i] = softClip (L[i] + drumL[(size_t) i]);
-                    R[i] = softClip (R[i] + drumR[(size_t) i]);
                     const int w = scopeW;
                     display.scope[(size_t) w].store (0.5f * (L[i] + R[i]), std::memory_order_relaxed);
                     scopeW = (w + 1) & (Display::scopeSize - 1);
@@ -155,7 +151,11 @@ namespace zen
             publishDisplay();
         }
 
+        // Each voice sits 6 dB below full scale, so chords and pads have room before the limiter.
+        static constexpr float voiceHeadroom = 0.5f;
+
         Display display;
+        Limiter limiter;
         Looper looper;
         DrumMachine drums;
 
@@ -707,8 +707,12 @@ namespace zen
             v.pluckPending = false;
 
             const float k = res * 3.95f;
+            // Gain staging into the filter: the filter's input saturates (that's what DRIVE is for), so
+            // with DRIVE low the signal goes in 6 dB lower and comes back up after, keeping stacked
+            // oscillators, unison and chords clean. At full DRIVE it's as hot as it always was.
             const float driveGain = 1.0f + 6.0f * drive;
-            const float driveComp = 1.0f / (1.0f + 1.6f * drive);
+            const float inTrim = 0.3f + 0.3f * drive;
+            const float driveComp = 0.6f / inTrim / (1.0f + 1.6f * drive);
             const float inv = 1.0f / (float) n;
 
             float G = 0.0f;
@@ -770,12 +774,12 @@ namespace zen
                     nzL = x * nG * 0.9f; nzR = (0.8f * x + 0.2f * w2 * 0.3f) * nG * 0.9f;
                 }
 
-                const float xL = (aL + bL + nzL) * driveGain * 0.6f;
-                const float xR = (aR + bR + nzR) * driveGain * 0.6f;
+                const float xL = (aL + bL + nzL) * driveGain * inTrim;
+                const float xR = (aR + bR + nzR) * driveGain * inTrim;
                 const float yL = v.lad[0].process (xL, G, k) * driveComp;
                 const float yR = v.lad[1].process (xR, G, k) * driveComp;
 
-                const float env = v.amp.next() * velGain * ampMod * 1.0f;
+                const float env = v.amp.next() * velGain * ampMod * voiceHeadroom;
                 const float pl = v.panL + (v.panLT - v.panL) * t, pr = v.panR + (v.panRT - v.panR) * t;
                 outL[i] += yL * env * pl;
                 outR[i] += yR * env * pr;

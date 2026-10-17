@@ -142,8 +142,9 @@ namespace zen
         void dubSample (float oL, float oR, float inL, float inR) noexcept
         {
             if (touched < len) { undoL[(size_t) pos] = oL; undoR[(size_t) pos] = oR; ++touched; }
-            bufL[(size_t) pos] = softClip (oL + inL * dub);
-            bufR[(size_t) pos] = softClip (oR + inR * dub);
+            // layers add up cleanly (the output limiter looks after the total); just keep it bounded
+            bufL[(size_t) pos] = std::max (-4.0f, std::min (4.0f, oL + inL * dub));
+            bufR[(size_t) pos] = std::max (-4.0f, std::min (4.0f, oR + inR * dub));
         }
 
         void beginRecording() noexcept

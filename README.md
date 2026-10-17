@@ -16,6 +16,9 @@ Built with JUCE. GitHub builds the Windows `.vst3` on every push to `main`.
 - **Filter:** 4-pole ladder with drive. ENV sweeps it with Env 1.
 - **Voices:** 8, with glide.
 - **Space:** chorus, ping-pong delay (free or synced) and a shimmer reverb.
+- **Headroom:** each voice sits 6 dB below full scale and the output goes through a clean
+  look-ahead limiter (ceiling -1 dBFS, 1.5 ms) instead of a clipper, so dense chords, pads and
+  stacked loops stay undistorted. Grit comes only from DRIVE (the filter input) when you ask for it.
 
 ## Pages
 

@@ -13,6 +13,24 @@ int main()
     proc.setPlayConfigDetails (0, 2, 48000.0, 512);
     proc.prepareToPlay (48000.0, 512);
 
+    // developer: dump every preset's engine settings (raw) for offline DSP analysis
+    if (const char* dir = std::getenv ("ZEN_DUMPSETTINGS"))
+    {
+        static_assert (std::is_trivially_copyable<zen::Settings>::value, "Settings must be plain data");
+        juce::File out (dir); out.createDirectory();
+        juce::String names;
+        for (int i = 0; i < proc.getNumPrograms(); ++i)
+        {
+            proc.setCurrentProgram (i);
+            const auto st = proc.settingsSnapshot();
+            out.getChildFile (juce::String (i).paddedLeft ('0', 3) + ".bin").replaceWithData (&st, sizeof (st));
+            names << i << "\t" << proc.getProgramName (i) << "\t" << ZenProcessor::presetInfo()[(size_t) i].category << "\n";
+        }
+        out.getChildFile ("names.txt").replaceWithText (names);
+        std::printf ("dumped %d presets (%d bytes each)\n", proc.getNumPrograms(), (int) sizeof (zen::Settings));
+        return 0;
+    }
+
     // every preset value must name a real parameter, and every preset must make sound
     int bad = 0;
     for (auto& pr : presets::all())
