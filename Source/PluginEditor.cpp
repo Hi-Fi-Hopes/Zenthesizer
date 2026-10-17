@@ -823,6 +823,14 @@ void Content::paint (juce::Graphics& g)
             if (clip.intersects (r.toNearestInt()))
                 theme::burnText (g, pl.text, r, juce::Justification::centred, theme::font (theme::FontKind::sansBold, 11.5f, 0.2f));
         }
+    if (page == play && clip.intersects (arpTempoArea()))
+    {
+        // where the arp's tempo comes from
+        const float host = proc.hostTempo();
+        const juce::String t = host > 1.0f ? "following the host: " + juce::String (host, 1) + " BPM"
+                                           : juce::String (juce::roundToInt (proc.getDrums().tempo)) + " BPM  -  set it with TEMPO on the BEAT page";
+        theme::burnText (g, t, arpTempoArea().toFloat(), juce::Justification::centred, theme::font (theme::FontKind::sans, 10.0f, 0.12f), theme::burnSoft);
+    }
 
     // readout under the porthole, or the current hint
     const juce::Rectangle<int> readoutArea (330, 600, 320, 60);
@@ -1117,6 +1125,7 @@ void Content::timerCallback()
     {
         repaint (330, 600, 320, 60);       // readout
         repaint (340, 830, 300, 56);       // preset name (host may change it)
+        if (page == play) repaint (arpTempoArea());
     }
 }
 

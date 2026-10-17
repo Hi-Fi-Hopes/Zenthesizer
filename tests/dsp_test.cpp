@@ -616,6 +616,20 @@ int main()
         CHECK (diff < 1.0e-5f, "the limiter leaves signals under -1 dBFS untouched (just 1.5 ms later) (%.6f)", diff);
     }
 
+    // 20. with no host tempo, the arp follows the BEAT page's TEMPO
+    {
+        auto stepsIn = [] (float drumTempo)
+        {
+            Run r; r.s.bpm = 0.0f; r.s.drums.tempo = drumTempo; r.s.arpOn = true; r.s.arpRate = 0;   // quarter notes
+            r.s.ampA = 0.0f; r.s.ampD = 0.3f; r.s.ampS = 0.0f; r.s.ampR = 0.3f; r.s.reverbMix = 0.0f;
+            const int before = r.eng.display.noteOnCount.load();
+            r.render (48000 * 6, { on (0, 60), on (0, 64) });
+            return r.eng.display.noteOnCount.load() - before;
+        };
+        const int at60 = stepsIn (60.0f), at120 = stepsIn (120.0f);
+        CHECK (std::abs (at60 - 6) <= 1 && std::abs (at120 - 12) <= 1, "arp quarter notes over 6 s: %d at 60 BPM, %d at 120 BPM", at60, at120);
+    }
+
     std::printf (failures == 0 ? "\nALL PASSED\n" : "\n%d FAILED\n", failures);
     return failures == 0 ? 0 : 1;
 }

@@ -65,6 +65,7 @@ public:
     void resized() override {}
     void mouseDown (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
+    juce::Rectangle<int> arpTempoArea() const { return { 270, 358, 400, 14 }; }
     void setRenderScale (float pixelsPerUnit);
 
     enum Page { synth = 0, mod, waves, beat, fx, play, stage, numPages };

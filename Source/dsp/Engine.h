@@ -123,7 +123,7 @@ namespace zen
                 const int len = std::min (4096, n - start);
                 float* L = outL + start; float* R = outR + start;
                 chorus.process (L, R, len, clamp01 (s.chorusMix + gMod[(int) Dst::chorusMix]), s.chorusDepth, s.chorusRate);
-                delay.process (L, R, len, s.delayTime, s.delaySync, s.bpm, s.delayFeedback, s.delayTone,
+                delay.process (L, R, len, s.delayTime, s.delaySync, tempo(), s.delayFeedback, s.delayTone,
                                clamp01 (s.delayMix + gMod[(int) Dst::delayMix]));
                 reverb.process (L, R, len, s.reverbSize, s.reverbDecay, s.reverbDamp, s.reverbShimmer,
                                 clamp01 (s.reverbMix + gMod[(int) Dst::reverbMix]));
@@ -225,6 +225,10 @@ namespace zen
         int scopeW = 0;
 
         //======================================================================
+        // One tempo for everything: the host's when there is one, otherwise the BEAT page's TEMPO
+        // (the Android and standalone apps), so drums, arp, synced echoes and the looper agree.
+        float tempo() const noexcept { return set->bpm > 1.0f ? set->bpm : std::max (20.0f, set->drums.tempo); }
+
         static int keyId (int ch, int note) noexcept   { return (ch << 8) | note; }
         static int plateId (int p) noexcept            { return 10000 + p; }
 
@@ -465,7 +469,7 @@ namespace zen
             }
             if (heldCount == 0) { arpCounter = 0.0; return; }
 
-            const float bpm = set->bpm > 1.0f ? set->bpm : 110.0f;
+            const float bpm = tempo();
             const double stepLen = arpBeats (set->arpRate) * 60.0 / bpm * fs;
             arpCounter -= len;
             if (arpCounter > 0.0) return;

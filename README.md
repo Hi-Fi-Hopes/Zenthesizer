@@ -29,7 +29,7 @@ Built with JUCE. GitHub builds the Windows `.vst3` on every push to `main`.
 | WAVES | the wavetable sandbox for Engine B's OWN table |
 | BEAT | 16-step pattern, 29 sounds, kits, synth patches on rows, grooves, tempo, swing |
 | FX | chorus, echo, shimmer reverb, air, glide, spread, volume |
-| PLAY | root, scale, octave for the note plates; arpeggiator; Launchkey pads and Learn |
+| PLAY | root, scale, octave for the note plates; arpeggiator; Launchkey pads and Learn; MPE |
 | STAGE | the porthole, large, for playing |
 
 ## Plates and the Launchkey
@@ -144,6 +144,12 @@ held value; double-tap again to unlock.
 - **SAVE / LOAD:** your wave library (standard wavetable WAVs). Your waves are also saved with the
   Ableton set and with your own presets (preset menu: "Save current sound as...").
 - Every wave is band-limited per octave, so even jagged drawings don't alias on high notes.
+
+## Tempo
+
+In Ableton everything (drums, arp, synced echoes, the looper's bar lock) follows Ableton's tempo.
+In the Android and standalone apps it all follows TEMPO on the BEAT page; the PLAY page shows it
+under ARPEGGIATOR.
 
 ## Android app
 
