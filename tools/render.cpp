@@ -4,6 +4,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "Presets.h"
+#include "ui/Plank.h"
 
 int main()
 {
@@ -145,9 +146,245 @@ int main()
     }
     const double t0 = juce::Time::getMillisecondCounterHiRes();
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
-    ed->setSize (980, 980);
+    ed->setSize (1600, 1000);
     std::printf ("editor + slab at 980 px: %.0f ms\n", juce::Time::getMillisecondCounterHiRes() - t0);
     auto* zen = dynamic_cast<ZenEditor*> (ed.get());
+
+    if (std::getenv ("ZEN_MOCKUP"))
+    {
+        // a still mockup of the landscape layout (1600 x 1000 design units), built from the real widgets
+        struct Mock : public juce::Component
+        {
+            juce::Image bg;
+            std::vector<std::pair<juce::String, juce::Rectangle<float>>> labels;
+            std::vector<std::tuple<juce::String, juce::Rectangle<float>, float>> serif;
+            std::vector<std::tuple<juce::String, float, float>> arcs;   // text, radius, angle (deg) around the porthole
+            bool curvedStrips = false;
+            void paint (juce::Graphics& g) override
+            {
+                g.drawImage (bg, getLocalBounds().toFloat());
+                for (auto& [t, r, sz] : serif) theme::burnText (g, t, r, juce::Justification::centred, theme::font (theme::FontKind::serif, sz));
+                // the PITCH and MOD strips, straight down the two ends
+                for (auto [x, dot, name] : { std::tuple<float, float, const char*> { 74.0f, 0.5f, "PITCH" }, { 1526.0f, 0.78f, "MOD" } })
+                {
+                    if (curvedStrips) break;
+                    const juce::Rectangle<float> groove (x - 9.0f, 240.0f, 18.0f, 600.0f);
+                    g.setColour (juce::Colour (0x59ffecc8)); g.fillRoundedRectangle (groove.translated (0, 1.0f).expanded (2.0f), 10.0f);
+                    g.setColour (juce::Colour (0x8c3b1f0c)); g.fillRoundedRectangle (groove, 9.0f);
+                    g.setColour (theme::burn.withAlpha (0.35f)); g.drawLine (x - 14.0f, 540.0f, x + 14.0f, 540.0f, 1.2f);
+                    const float y = groove.getBottom() - dot * groove.getHeight();
+                    juce::ColourGradient br (theme::brassHi, x - 6.0f, y - 8.0f, theme::brassDk, x + 10.0f, y + 10.0f, true);
+                    br.addColour (0.4, theme::brass);
+                    g.setGradientFill (br); g.fillEllipse (x - 13.0f, y - 13.0f, 26.0f, 26.0f);
+                    theme::burnText (g, name, { x - 40.0f, 852.0f, 80.0f, 14.0f }, juce::Justification::centred, theme::font (theme::FontKind::sansBold, 11.5f, 0.2f));
+                }
+                for (auto& [t, r, a] : arcs)
+                    theme::arcText (g, t, { 800.0f, 430.0f }, r, juce::degreesToRadians (a), theme::font (theme::FontKind::sansBold, 11.5f, 0.22f));
+                for (auto& [t, r] : labels) theme::burnText (g, t, r, juce::Justification::centred, theme::font (theme::FontKind::sansBold, 11.5f, 0.2f));
+            }
+        };
+        Mock m;
+        m.setSize (1600, 1000);
+        m.bg = plank::render (1600);
+        SlabLookAndFeel lnf; m.setLookAndFeel (&lnf);
+        std::vector<std::unique_ptr<juce::Component>> kids;
+        auto place = [&] (juce::Component* c, juce::Point<float> pos, float w, float h, float rot = 0.0f, float anchorY = -1.0f)
+        {
+            const float ay = anchorY < 0.0f ? h * 0.5f : anchorY;
+            c->setBounds (juce::roundToInt (pos.x - w * 0.5f), juce::roundToInt (pos.y - ay), juce::roundToInt (w), juce::roundToInt (h));
+            if (rot != 0.0f) c->setTransform (juce::AffineTransform::rotation (juce::degreesToRadians (rot), pos.x, pos.y));
+            m.addAndMakeVisible (c);
+            kids.emplace_back (c);
+        };
+        auto steel = [&] (const char* t, juce::Point<float> pos, float dome = 22.0f, bool led = true, bool on = false)
+        {
+            auto* b = new SteelButton (t, dome); b->showLed = led; b->setToggleState (on, juce::dontSendNotification);
+            if (on) b->setLedLevel (1.0f);
+            place (b, pos, 64.0f, 56.0f, 0.0f, 23.0f);
+        };
+        const juce::Point<float> C (800.0f, 430.0f);
+        auto pol = [&] (float r, float deg) { return theme::polar (C, r, deg); };
+
+        // top: title, tabs, preset
+        m.serif.push_back ({ "zenthesizer", { 150.0f, 88.0f, 260.0f, 44.0f }, 36.0f });
+        const char* tabNames[] = { "SYNTH", "MOD", "WAVES", "BEAT", "FX", "PLAY", "STAGE" };
+        for (int i = 0; i < 7; ++i)
+        {
+            auto* t = new TabButton (tabNames[i]); t->setToggleState (i == 0, juce::dontSendNotification);
+            place (t, { 560.0f + 80.0f * (float) i, 112.0f }, 76.0f, 34.0f);
+        }
+        steel ("", { 1240.0f, 98.0f }, 18.0f, false);
+        steel ("", { 1480.0f, 98.0f }, 18.0f, false);
+        m.serif.push_back ({ "Temple Mist", { 1270.0f, 92.0f, 180.0f, 36.0f }, 26.0f });
+        m.labels.push_back ({ "PREV", { 1200.0f, 124.0f, 80.0f, 14.0f } });
+        m.labels.push_back ({ "NEXT", { 1440.0f, 124.0f, 80.0f, 14.0f } });
+
+        // the synth core, as on today's slab
+        for (int i = 0; i < 10; ++i)
+        {
+            const float a = -60.0f + 120.0f / 9.0f * (float) i;
+            const int src = i < 9 ? i + 1 : (int) zen::Src::slide;
+            auto* b = new SteelButton (ZenProcessor::srcShortNames()[src], 22.0f); b->ledColour = theme::srcColour (src);
+            place (b, pol (255.0f, a), 52.0f, 54.0f, a, 23.0f);
+        }
+        const char* kn[] = { "CUTOFF", "RES", "DRIVE", "ENV", "ATTACK", "DECAY", "SUSTAIN", "RELEASE" };
+        const float kv[] = { 0.62f, 0.15f, 0.1f, 0.62f, 0.8f, 0.7f, 0.85f, 0.85f };
+        for (int i = 0; i < 8; ++i)
+        {
+            const float a = -66.0f + (float) i * 132.0f / 7.0f;
+            auto* k = new WoodKnob (kn[i], 42.0f); k->setRange (0.0, 1.0); k->setValue (kv[i]);
+            k->labelDir = { std::sin (juce::degreesToRadians (a)), -std::cos (juce::degreesToRadians (a)) };
+            if (i == 0 || i == 7) k->labelDir = { 0.0f, 0.82f };
+            place (k, pol (175.0f, a), 120.0f, 120.0f);
+        }
+        { auto* ph = new Porthole (proc.display()); place (ph, C, 218.0f, 218.0f); for (int f = 0; f < 40; ++f) ph->tick (0.03f, 2); }
+        { auto* ea = new EngineBox (proc, false); place (ea, { 522.0f, 440.0f }, 185.0f, 200.0f); ea->tick (0.0f, false); }
+        { auto* eb = new EngineBox (proc, true);  place (eb, { 1078.0f, 440.0f }, 185.0f, 200.0f); eb->tick (0.0f, false); }
+
+        // timbre plates, centred above the keys
+        for (int i = 0; i < 4; ++i)
+        {
+            auto* p = new BrassPlate (juce::String::charToString ((juce::juce_wchar) ('A' + i)), 56.0f);
+            const char* sub[] = { "BLOOM", "MORPH", "ECHOES", "SPACE" };
+            p->subLabel = sub[i];
+            const bool fin2 = juce::String (std::getenv ("ZEN_MOCKKEYS")) == "final";
+            place (p, { fin2 ? 620.0f + 120.0f * (float) i : 650.0f + 100.0f * (float) i, 618.0f }, 126.0f, 126.0f);
+        }
+        m.labels.push_back ({ "TIMBRE", { 740.0f, 690.0f, 120.0f, 14.0f } });
+
+        // the keys, piano-style: black keys a row up, a slight smile across the row.
+        // ZEN_MOCKKEYS=wide: an octave and a half (C3 to F4); big: one octave, larger plates
+        const juce::String mode (std::getenv ("ZEN_MOCKKEYS"));
+        const bool wide = mode == "wide" || mode == "final";
+        const bool fin = mode == "final";   // an octave and a half with larger keys
+        const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+        const bool inScale[] = { true, false, false, true, false, true, false, true, false, false, true, false };   // C minor pentatonic
+        const int numKeys = wide ? 18 : 12;
+        const float spacing = fin ? 94.0f : (wide ? 84.0f : 116.0f), whiteDia = fin ? 58.0f : (wide ? 50.0f : 64.0f), blackDia = fin ? 50.0f : (wide ? 44.0f : 56.0f);
+        int numWhites = 0; for (int k = 0; k < numKeys; ++k) if (! juce::String (names[k % 12]).contains ("#")) ++numWhites;
+        const float mid = fin ? 800.0f : (wide ? 850.0f : 800.0f);
+        const float x0 = mid - spacing * (float) (numWhites - 1) * 0.5f;
+        const float bend = fin ? 0.00012f : 0.00018f;
+        auto curve = [mid, bend] (float x) { return -bend * (x - mid) * (x - mid); };
+        int w = 0;
+        for (int k = 0; k < numKeys; ++k)
+        {
+            const int n = k % 12;
+            const bool black = juce::String (names[n]).contains ("#");
+            const float x = black ? x0 + spacing * ((float) w - 0.5f) : x0 + spacing * (float) w;
+            const juce::String sub = juce::String (names[n]) + juce::String (3 + k / 12);
+            auto* p = new BrassPlate (names[n], black ? blackDia : whiteDia); p->subLabel = sub;
+            if (! inScale[n]) p->setAlpha (0.38f);
+            if (k == 7) p->setLevel (0.9f);
+            const float box = (black ? blackDia : whiteDia) + 66.0f;
+            place (p, { x, (black ? (wide ? 752.0f : 742.0f) : (wide ? 852.0f : 858.0f)) + curve (x) }, box, box);
+            if (! black) ++w;
+        }
+        const float xL = x0 - spacing * 0.5f - (wide ? 42.0f : 36.0f), xR = x0 + spacing * (float) (numWhites - 1) + spacing * 0.5f + (wide ? 42.0f : 36.0f);
+        if (fin)
+        {
+            steel ("OCT -", { 1350.0f, 846.0f }, 18.0f, false);
+            steel ("OCT +", { 1424.0f, 846.0f }, 18.0f, false);
+            m.labels.push_back ({ "OCTAVE  C3", { 1327.0f, 802.0f, 120.0f, 14.0f } });
+        }
+        else
+        {
+            steel ("OCT -", { xL, 828.0f + curve (xL) }, 18.0f, false);
+            steel ("OCT +", { xR, 828.0f + curve (xR) }, 18.0f, false);
+            m.labels.push_back ({ "C3", { xR - 40.0f, 870.0f + curve (xR), 80.0f, 14.0f } });
+        }
+
+        if (fin)
+        {
+            // PITCH and MOD bow gently outward, like the rest of the sides
+            m.curvedStrips = true;
+            auto* ps = new ArcStrip ("PITCH", true, { 74.0f + 900.0f, 530.0f }, 900.0f, 250.5f, 289.5f);
+            m.addAndMakeVisible (ps); kids.emplace_back (ps);
+            auto* ms = new ArcStrip ("MOD", false, { 1526.0f - 900.0f, 530.0f }, 900.0f, 109.5f, 70.5f);
+            ms->setShown (0.78f);
+            m.addAndMakeVisible (ms); kids.emplace_back (ms);
+        }
+
+        // left: pitch strip, then the chords
+
+        if (! fin) m.labels.push_back ({ "CHORDS  -  C MINOR", { 150.0f, 196.0f, 220.0f, 14.0f } });
+        else m.arcs.push_back ({ "CHORDS  -  C MINOR", 624.0f, 270.0f });
+        const juce::String rn[] = { "i", juce::String (juce::CharPointer_UTF8 ("ii\xc2\xb0")), "III", "iv", "v", "VI", "VII" };
+        const char* cn[] = { "Cm", "Ddim", "Eb", "Fm", "Gm", "Ab", "Bb" };
+        for (int i = 0; i < 7; ++i)
+        {
+            auto* p = new BrassPlate (rn[i], 48.0f); p->subLabel = cn[i];
+            if (i == 3) p->setLevel (0.9f);
+            if (fin)
+            {
+                // a curved column around the porthole, top to bottom
+                place (p, pol (568.0f, 297.0f - 9.0f * (float) i), 110.0f, 110.0f);
+                continue;
+            }
+            const float x = i < 6 ? (i % 2 == 0 ? 205.0f : 315.0f) : 260.0f;
+            const float y = 262.0f + 98.0f * (float) (i / 2);
+            place (p, { x, y }, 120.0f, 120.0f);
+        }
+        if (fin)
+        {
+            // the chord modifiers on an inner arc beside them
+            const char* mods[] = { "7TH", "9TH", "SUS", "SPREAD", "STRUM" };
+            for (int i = 0; i < 5; ++i)
+            {
+                auto* b = new SteelButton (mods[i], 20.0f); b->setToggleState (i == 0 || i == 3, juce::dontSendNotification);
+                if (i == 0 || i == 3) b->setLedLevel (1.0f);
+                place (b, pol (448.0f, 290.0f - 10.0f * (float) i), 64.0f, 56.0f, 0.0f, 23.0f);
+            }
+            { auto* k = new WoodKnob ("SPEED", 32.0f); k->setRange (0.0, 1.0); k->setValue (0.4); k->labelDir = { 0.0f, 0.82f }; place (k, pol (448.0f, 238.0f), 84.0f, 84.0f); }
+        }
+        else
+        {
+            steel ("7TH", { 180.0f, 646.0f }, 20.0f, true, true);
+            steel ("9TH", { 260.0f, 646.0f }, 20.0f);
+            steel ("SUS", { 340.0f, 646.0f }, 20.0f);
+            steel ("SPREAD", { 220.0f, 726.0f }, 20.0f, true, true);
+            steel ("STRUM", { 300.0f, 726.0f }, 20.0f);
+            { auto* k = new WoodKnob ("STRUM SPEED", 34.0f); k->setRange (0.0, 1.0); k->setValue (0.4); k->labelDir = { 0.0f, 0.82f }; place (k, { 260.0f, 826.0f }, 100.0f, 100.0f); }
+        }
+
+        // right: looper, visuals, mod strip
+        if (fin)
+        {
+            // the mirror of the left: looper and visuals on arcs around the porthole
+            m.arcs.push_back ({ "LOOPER", 624.0f, 72.0f });
+            m.arcs.push_back ({ "VISUALS", 624.0f, 108.0f });
+            steel ("LOOP", pol (568.0f, 63.0f), 22.0f, true, true);
+            steel ("STOP", pol (568.0f, 72.0f), 22.0f);
+            steel ("UNDO", pol (568.0f, 81.0f), 22.0f);
+            { auto* k = new WoodKnob ("LOOP LVL", 40.0f); k->setRange (0.0, 1.0); k->setValue (0.8); k->labelDir = { 0.0f, 0.82f }; place (k, pol (448.0f, 74.0f), 100.0f, 100.0f); }
+            steel ("OFF", pol (568.0f, 99.0f), 20.0f);
+            steel ("LOW", pol (568.0f, 108.0f), 20.0f);
+            steel ("FULL", pol (568.0f, 117.0f), 20.0f, true, true);
+            { auto* b = new SteelButton ("FULL SCREEN", 18.0f); b->showLed = false; place (b, pol (448.0f, 112.0f), 110.0f, 56.0f, 0.0f, 23.0f); }
+        }
+        else
+        {
+        m.labels.push_back ({ "LOOPER", { 1300.0f, 220.0f, 140.0f, 14.0f } });
+        steel ("LOOP", { 1290.0f, 266.0f }, 22.0f, true, true);
+        steel ("STOP", { 1370.0f, 266.0f }, 22.0f);
+        steel ("UNDO", { 1450.0f, 266.0f }, 22.0f);
+        { auto* k = new WoodKnob ("LOOP LVL", 40.0f); k->setRange (0.0, 1.0); k->setValue (0.8); k->labelDir = { 0.0f, 0.82f }; place (k, { 1370.0f, 400.0f }, 110.0f, 110.0f); }
+        m.labels.push_back ({ "VISUALS", { 1300.0f, 520.0f, 140.0f, 14.0f } });
+        steel ("OFF", { 1290.0f, 566.0f }, 20.0f);
+        steel ("LOW", { 1370.0f, 566.0f }, 20.0f);
+        steel ("FULL", { 1450.0f, 566.0f }, 20.0f, true, true);
+        }
+
+        if (! fin) { auto* b = new SteelButton ("FULL SCREEN", 18.0f); b->showLed = false; place (b, { 1370.0f, 740.0f }, 110.0f, 56.0f, 0.0f, 23.0f); }
+
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (200);
+        auto img = m.createComponentSnapshot (m.getLocalBounds(), true, 1.0f);
+        juce::File f (std::getenv ("ZEN_MOCKUP")); f.deleteFile();
+        juce::FileOutputStream os (f); juce::PNGImageFormat().writeImageToStream (img, os);
+        std::printf ("wrote %s\n", f.getFullPathName().toRawUTF8());
+        m.setLookAndFeel (nullptr);
+        return 0;
+    }
 
     if (std::getenv ("ZEN_FULLTEST"))
     {
@@ -207,7 +444,7 @@ int main()
         auto click = [&] (juce::ComponentPeer* pr, juce::Point<float> pos) { clickAt (&pr->getComponent(), pos); };
         auto& content = zen->getContent();
         // preset name sits at 490, 858 in design units
-        const auto namePos = ed->getLocalPoint (&content, juce::Point<float> (490.0f, 858.0f));
+        const auto namePos = ed->getLocalPoint (&content, juce::Point<float> (1360.0f, 108.0f));
         std::printf ("before: %s\n", proc.currentPresetName().toRawUTF8());
         click (peer, namePos);
         // menus now open inside the editor: find the menu windows among its children

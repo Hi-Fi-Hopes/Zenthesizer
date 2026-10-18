@@ -46,6 +46,7 @@ static float rms (const std::vector<float>& x, size_t a, size_t b)
     return (float) std::sqrt (acc / (double) std::max<size_t> (1, b - a));
 }
 static float peak (const std::vector<float>& x) { float p = 0; for (float v : x) p = std::max (p, std::abs (v)); return p; }
+static int juce_round (float x) { return (int) std::lround (x); }
 static bool finite (const std::vector<float>& x) { for (float v : x) if (! std::isfinite (v)) return false; return true; }
 
 int main()
@@ -130,7 +131,7 @@ int main()
         Run r; r.s.reverbMix = 0;
         r.render (9600, { on (0, 36, 100, 10), on (0, 48, 90, 10), pat (2000, 48, 127, 10) });
         CHECK (r.eng.display.lastPlate.load() == 0, "pad 36 -> note plate 1");
-        CHECK (std::abs (r.eng.display.lastPitch.load() - (float) plateNote (0, 0, 6, 0)) < 0.01f, "plate 1 pitch = scale root");
+        CHECK (std::abs (r.eng.display.lastPitch.load() - (float) keyNote (0, 0)) < 0.01f, "key 1 plays C3");
         CHECK (r.eng.display.src[(int) Src::plateA].load() > 0.8f, "poly aftertouch -> timbre plate A (%.2f)", r.eng.display.src[(int) Src::plateA].load());
         CHECK (rms (r.L, 4800, 9600) > 0.02f, "plate note sounds");
     }
@@ -273,10 +274,10 @@ int main()
                           pat (7400, pad, 20, ch), off (7800, pad, ch) });                      // double tap, lifting off slowly
         r.render (9600);
         CHECK (A() > 0.8f, "double tap locks plate A at its peak (%.2f)", A());
-        CHECK (r.eng.display.plateLocked[12].load(), "lock shows on the display");
+        CHECK (r.eng.display.plateLocked[timbrePlate0].load(), "lock shows on the display");
         r.render (9600, { on (0, pad, 100, ch), off (2400, pad, ch), on (6000, pad, 100, ch), off (7000, pad, ch) });
         r.render (9600);
-        CHECK (A() < 0.05f && ! r.eng.display.plateLocked[12].load(), "double tap again unlocks (%.2f)", A());
+        CHECK (A() < 0.05f && ! r.eng.display.plateLocked[timbrePlate0].load(), "double tap again unlocks (%.2f)", A());
     }
 
     // 12. drums: every groove plays, sane levels; a four-on-the-floor at 120 hits 8 kicks in 4 s
@@ -628,6 +629,54 @@ int main()
         };
         const int at60 = stepsIn (60.0f), at120 = stepsIn (120.0f);
         CHECK (std::abs (at60 - 6) <= 1 && std::abs (at120 - 12) <= 1, "arp quarter notes over 6 s: %d at 60 BPM, %d at 120 BPM", at60, at120);
+    }
+
+    // 21. the keys are chromatic; out-of-scale keys can be dimmed (still play), muted, or snapped into the scale
+    {
+        auto play = [] (KeyScale mode, int pad)
+        {
+            Run r; r.s.root = 0; r.s.scale = 6; r.s.keyScale = mode;   // C minor pentatonic
+            const int before = r.eng.display.noteOnCount.load();
+            r.render (2400, { on (0, pad, 100, 10) });
+            return std::make_pair (r.eng.display.noteOnCount.load() - before, juce_round (r.eng.display.lastPitch.load()));
+        };
+        const auto dim = play (KeyScale::dim, 37), mute = play (KeyScale::mute, 37), snap = play (KeyScale::snap, 37), inside = play (KeyScale::mute, 39);
+        CHECK (dim.first == 1 && dim.second == 61, "dim: C# (out of scale) still plays C# (%d)", dim.second);
+        CHECK (mute.first == 0, "mute: C# stays silent");
+        CHECK (snap.first == 1 && snap.second == 60, "snap: C# plays the nearest scale note, C (%d)", snap.second);
+        CHECK (inside.first == 1 && inside.second == 63, "mute leaves in-scale keys alone (D# = %d)", inside.second);
+    }
+
+    // 22. chords: the seven chords of the key, with 7th / 9th / sus / spread, and strum
+    {
+        auto c0 = buildChord (0, 0, 2, 0, false, false, false, false);
+        CHECK (c0.n == 3 && c0.notes[0] == 60 && c0.notes[1] == 63 && c0.notes[2] == 67 && chordName (c0) == "Cm", "C minor, chord i = C Eb G (%s)", chordName (c0).c_str());
+        CHECK (chordName (buildChord (1, 0, 2, 0, false, false, false, false)) == "Ddim" && chordNumeral (1, 2) == "ii\xc2\xb0", "chord ii in C minor is D diminished");
+        CHECK (chordName (buildChord (2, 0, 2, 0, true, false, false, false), keyUsesFlats (0, 2)) == "Ebmaj7", "III7 in C minor is Ebmaj7 (%s)", chordName (buildChord (2, 0, 2, 0, true, false, false, false), keyUsesFlats (0, 2)).c_str());
+        CHECK (! keyUsesFlats (7, 1) && keyUsesFlats (5, 1), "G major spells with sharps, F major with flats");
+        CHECK (chordName (buildChord (0, 0, 2, 0, true, true, false, false)) == "Cm9", "i with 7th and 9th = Cm9");
+        CHECK (chordName (buildChord (0, 0, 2, 0, false, false, true, false)) == "Csus2", "sus = sus2 where the second is a whole step");
+        CHECK (chordName (buildChord (3, 0, 1, 0, false, false, false, false)) == "F" && chordNumeral (5, 1) == "vi", "C major: IV = F, vi is minor");
+        CHECK (chordScale (6).n == 7 && chordScale (6).steps[2] == 3, "minor pentatonic borrows the minor scale for chords");
+        const auto sp = buildChord (0, 0, 2, 0, false, false, false, true);
+        CHECK (sp.n == 3 && sp.notes[0] == 48 && sp.notes[1] == 67 && sp.notes[2] == 75, "spread voicing: root down an octave, 5th, 3rd up an octave");
+
+        Run r; r.s.root = 0; r.s.scale = 2; r.s.chord7 = true; r.s.ampA = 0.0f;
+        r.eng.setUiChord (0, 0.8f);
+        r.render (2400);
+        int sounding = 0; for (int k = 0; k < 6; ++k) if (r.eng.findVoice (20000 + k) != nullptr) ++sounding;
+        CHECK (sounding == 4 && std::abs (r.eng.findVoice (20003)->note - 70.0f) < 0.01f, "chord button plays Cm7 (%d notes)", sounding);
+        r.eng.setUiChord (0, -1.0f);
+        r.render (48000);
+        CHECK (r.eng.findVoice (20000) == nullptr || ! r.eng.findVoice (20000)->gate, "letting go releases the chord");
+
+        Run st; st.s.root = 0; st.s.scale = 2; st.s.chordStrum = true; st.s.strumSpeed = 0.0f;   // slowest strum
+        st.eng.setUiChord (4, 0.8f);
+        st.render (256);
+        int early = 0; for (int k = 0; k < 6; ++k) if (st.eng.findVoice (20000 + 4 * 16 + k)) ++early;
+        st.render (24000);
+        int later = 0; for (int k = 0; k < 6; ++k) if (st.eng.findVoice (20000 + 4 * 16 + k)) ++later;
+        CHECK (early == 1 && later == 3, "strum: notes start one after another (%d, then %d)", early, later);
     }
 
     std::printf (failures == 0 ? "\nALL PASSED\n" : "\n%d FAILED\n", failures);

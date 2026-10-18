@@ -53,6 +53,8 @@ namespace zen
         Engine()
         {
             for (auto& u : uiPlate) u.store (-1.0f);
+            for (auto& u : uiChord) u.store (-1.0f);
+            uiLast.fill (-1.0f); uiChordLast.fill (-1.0f);
             (void) Wavetables::get();   // build the tables up front, not on the audio thread
         }
 
@@ -76,6 +78,8 @@ namespace zen
             for (auto& v : voices) { v.active = false; v.gate = false; v.amp.reset(); v.e1.reset(); v.e2.reset(); }
             chorus.clear(); delay.clear(); reverb.clear();
             for (auto& p : plates) p = PlateState {};
+            for (auto& c : chordNotes) c = ChordNotes {};
+            numPending = 0;
             heldCount = 0; arpPlaying = -1; arpCounter = 0.0; arpStep = 0;
             sustainPedal = false;
         }
@@ -97,6 +101,11 @@ namespace zen
         {
             if (plate >= 0 && plate < numPlates) uiPlate[(size_t) plate].store (pressure);
         }
+        // UI: press/release a chord button (degree 0..6), same convention.
+        void setUiChord (int degree, float pressure) noexcept
+        {
+            if (degree >= 0 && degree < numChords) uiChord[(size_t) degree].store (pressure);
+        }
 
         void process (const Settings& s, const MidiEvent* ev, int numEv, float* outL, float* outR, int n)
         {
@@ -104,6 +113,7 @@ namespace zen
             userNow = userTablePtr.load();
             if (const int seq = uiWheelSeq.load(); seq != uiWheelSeen) { uiWheelSeen = seq; wheel = uiWheel.load(); }   // last touched wins
             pollUiPlates();
+            pollUiChords();
             int e = 0;
             for (int start = 0; start < n; start += chunk)
             {
@@ -173,7 +183,7 @@ namespace zen
         void setPlatePressure (int p, float v)
         {
             auto& ps = plates[(size_t) p];
-            if (p >= numNotePlates && ps.locked && ! ps.down) return;   // locked and let go: keep it
+            if (p >= timbrePlate0 && ps.locked && ! ps.down) return;   // locked and let go: keep it
             ps.target = v;
             if (ps.down) ps.peak = std::max (ps.peak, v);
         }
@@ -188,6 +198,16 @@ namespace zen
         std::array<PlateState, numPlates> plates {};
         std::array<std::atomic<float>, numPlates> uiPlate {};
         std::array<float, numPlates> uiLast {};
+        std::array<std::atomic<float>, numChords> uiChord {};
+        std::array<float, numChords> uiChordLast {};
+
+        // chords: which notes each chord button started, and strummed notes still waiting to start
+        struct ChordNotes { int n = 0; int ids[6] {}; };
+        std::array<ChordNotes, numChords> chordNotes {};
+        struct Pending { int id; float pitch; float vel; double wait; int chord; };
+        std::array<Pending, 48> pending {};
+        int numPending = 0;
+        static int chordId (int degree, int k) noexcept { return 20000 + degree * 16 + k; }
         uint32_t serial = 1;
 
         float wheel = 0.0f, chanAT = 0.0f, bend = 0.0f;   // bend: -1..1 from MIDI
@@ -325,7 +345,13 @@ namespace zen
             if (p < numNotePlates)
             {
                 ps.target = fromUi ? vel : 0.0f;
-                noteOn (plateId (p), (float) plateNote (p, set->root, set->scale, set->octave), fromUi ? 0.8f : vel, p);
+                int note = keyNote (p, set->octave);
+                if (! inScale (note, set->root, set->scale))
+                {
+                    if (set->keyScale == KeyScale::mute) return;                        // muted: out-of-scale keys stay silent
+                    if (set->keyScale == KeyScale::snap) note = snapToScale (note, set->root, set->scale);
+                }
+                noteOn (plateId (p), (float) note, fromUi ? 0.8f : vel, p);
             }
             else
             {
@@ -357,6 +383,61 @@ namespace zen
                 ps.lastUp = sampleClock == 0 ? 1 : sampleClock;
                 if (ps.locked) ps.target = ps.peak;          // hold the hardest point of that press
                 else if (! set->latchTimbre) ps.target = 0.0f;
+            }
+        }
+
+        // ---- chords ---------------------------------------------------------------
+        void chordDown (int degree, float vel)
+        {
+            const auto& s = *set;
+            const auto c = buildChord (degree, s.root, s.scale, s.octave, s.chord7, s.chord9, s.chordSus, s.chordSpread);
+            auto& cn = chordNotes[(size_t) degree];
+            chordUp (degree);
+            // strum: each note a little after the last, low to high (up to ~120 ms apart)
+            const double gap = s.chordStrum ? (0.012 + 0.11 * (1.0 - (double) clamp01 (s.strumSpeed))) * fs : 0.0;
+            for (int k = 0; k < c.n; ++k)
+            {
+                const int id = chordId (degree, k);
+                cn.ids[cn.n++] = id;
+                if (k == 0 || gap <= 0.0) noteOn (id, (float) c.notes[k], vel, -1);
+                else if (numPending < (int) pending.size()) pending[(size_t) numPending++] = { id, (float) c.notes[k], vel * 0.95f, gap * k, degree };
+            }
+        }
+
+        void chordUp (int degree)
+        {
+            auto& cn = chordNotes[(size_t) degree];
+            for (int k = 0; k < cn.n; ++k) noteOff (cn.ids[k]);
+            cn.n = 0;
+            int w = 0;   // drop any of its strummed notes that haven't started yet
+            for (int i = 0; i < numPending; ++i) if (pending[(size_t) i].chord != degree) pending[(size_t) w++] = pending[(size_t) i];
+            numPending = w;
+        }
+
+        void tickPending (int len)
+        {
+            int w = 0;
+            for (int i = 0; i < numPending; ++i)
+            {
+                auto p = pending[(size_t) i];
+                p.wait -= len;
+                if (p.wait <= 0.0) noteOn (p.id, p.pitch, p.vel, -1);
+                else pending[(size_t) w++] = p;
+            }
+            numPending = w;
+        }
+
+        void pollUiChords()
+        {
+            for (int d = 0; d < numChords; ++d)
+            {
+                const float u = uiChord[(size_t) d].load();
+                const float last = uiChordLast[(size_t) d];
+                if (u >= 0.0f && last < 0.0f) chordDown (d, 0.8f);
+                else if (u < 0.0f && last >= 0.0f) chordUp (d);
+                else if (u >= 0.0f)
+                    for (int k = 0; k < chordNotes[(size_t) d].n; ++k) setPressure (chordNotes[(size_t) d].ids[k], u);
+                uiChordLast[(size_t) d] = u;
             }
         }
 
@@ -544,10 +625,10 @@ namespace zen
                 case Src::rand: return randOut;
                 case Src::wheel: return wheel;
                 case Src::chanAT: return chanAT;
-                case Src::plateA: return plates[12].press;
-                case Src::plateB: return plates[13].press;
-                case Src::plateC: return plates[14].press;
-                case Src::plateD: return plates[15].press;
+                case Src::plateA: return plates[timbrePlate0].press;
+                case Src::plateB: return plates[timbrePlate0 + 1].press;
+                case Src::plateC: return plates[timbrePlate0 + 2].press;
+                case Src::plateD: return plates[timbrePlate0 + 3].press;
                 default: return 0.0f;
             }
         }
@@ -576,6 +657,7 @@ namespace zen
         void controlTick (int len)
         {
             const auto& s = *set;
+            if (numPending > 0) tickPending (len);
             arpTick (len);
 
             // LFOs (rates can be modulated by global sources)

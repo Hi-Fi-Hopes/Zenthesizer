@@ -47,8 +47,15 @@ namespace zen
 
     constexpr int numTables = 4;          // built-in tables (AIR, GLASS, VOX, REED); 4 = the user's own
     constexpr int numScales = 11;
-    constexpr int numPlates = 16;   // 12 note plates + 4 timbre plates (A-D)
-    constexpr int numNotePlates = 12;
+    // The keys: an octave and a half, C to F, piano-style; then the 4 timbre plates (A-D).
+    constexpr int numNotePlates = 18;
+    constexpr int timbrePlate0 = numNotePlates;   // plate index of A
+    constexpr int numPlates = numNotePlates + 4;
+    constexpr int numPadPlates = 16;              // the Launchkey's pads: the first 12 keys and A-D
+    constexpr int numChords = 7;                  // the chord buttons: the seven chords of the key
+
+    // What the keys do with notes outside the scale set on the PLAY page.
+    enum class KeyScale : int { dim = 0, mute, snap };
 
     struct Settings
     {
@@ -98,6 +105,9 @@ namespace zen
         bool arpHold = false;
 
         float bendRange = 2.0f;   // semitones, for MIDI pitch bend and the on-screen strip
+        KeyScale keyScale = KeyScale::dim;
+        bool chord7 = false, chord9 = false, chordSus = false, chordSpread = false, chordStrum = false;
+        float strumSpeed = 0.4f;  // 0..1
         int   mpe = 0;            // 0 = off; else MPE is on and this is the per-note bend range (semitones)
         float loopLevel = 0.8f;   // the looper's playback level
         DrumSettings drums;
@@ -111,7 +121,9 @@ namespace zen
     inline std::array<int, numPlates> defaultPadNotes()
     {
         std::array<int, numPlates> a {};
-        for (int i = 0; i < numPlates; ++i) a[(size_t) i] = 36 + i;
+        a.fill (-1);
+        for (int i = 0; i < 12; ++i) a[(size_t) i] = 36 + i;                       // pads C1-B1: the first octave of keys
+        for (int i = 0; i < 4; ++i) a[(size_t) (timbrePlate0 + i)] = 48 + i;       // pads C2-D#2: A-D
         return a;
     }
 }

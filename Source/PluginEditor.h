@@ -4,6 +4,7 @@
 #include "PluginProcessor.h"
 #include "ui/Widgets.h"
 #include "ui/Wood.h"
+#include "ui/Plank.h"
 #include "ui/WavePanel.h"
 #include "ui/BeatPanel.h"
 #include <map>
@@ -55,24 +56,42 @@ private:
 };
 
 //==============================================================================
-// Everything on the slab, at the design size (980 x 980). The editor scales it.
+// The middle of the board: every page's controls live here, in the 980 x 980 coordinates
+// of the old round slab (its centre sits on the porthole). Transparent; it only paints labels.
+class Core : public juce::Component
+{
+public:
+    Core() { setInterceptsMouseClicks (false, true); setPaintingIsUnclipped (true); }
+    std::function<void (juce::Graphics&)> painter;
+    void paint (juce::Graphics& g) override { if (painter) painter (g); }
+};
+
+//==============================================================================
+// Everything on the board, at the design size (1600 x 1000). The editor scales it.
 class Content : public juce::Component, private juce::Timer
 {
 public:
+    static constexpr int W = 1600, H = 1000;
+    static constexpr float coreX = 310.0f, coreY = -60.0f;   // where the old slab's (0,0) sits on the board
+
     explicit Content (ZenProcessor&);
     ~Content() override;
     void paint (juce::Graphics&) override;
     void resized() override {}
     void mouseDown (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
-    juce::Rectangle<int> arpTempoArea() const { return { 270, 358, 400, 14 }; }
+    juce::Rectangle<int> arpTempoArea() const { return { 270, 358, 400, 14 }; }   // (core coordinates)
     void setRenderScale (float pixelsPerUnit);
+    std::function<void()> onFullScreen;   // set by the editor (desktop)
 
     enum Page { synth = 0, mod, waves, beat, fx, play, stage, numPages };
     void showPage (int);
     void showHint (const juce::String&);
 
 private:
+    void paintCore (juce::Graphics&);
+    void layoutBoard();
+    void updateKeyLabels();
     void timerCallback() override;
     void setupSynthPage();
     void setupKnob (WoodKnob&, const char* paramId, int dst);
@@ -88,6 +107,7 @@ private:
 
     ZenProcessor& proc;
     SlabLookAndFeel lnf;
+    Core core;
     juce::Image slab;
     float slabPixels = 0.0f;
     std::atomic<bool> rendering { false };
@@ -104,8 +124,19 @@ private:
     SteelButton prevBtn { "PREV", 16.0f }, nextBtn { "NEXT", 16.0f };
     SteelButton loopBtn { "LOOP", 22.0f }, loopStopBtn { "STOP", 22.0f }, loopUndoBtn { "UNDO", 22.0f };
     WoodKnob loopLevelKnob { "LOOP LVL", 32.0f };
-    ArcStrip pitchStrip { "PITCH", true,  { 490.0f, 490.0f }, 395.0f, 254.0f, 286.0f };
-    ArcStrip modStrip   { "MOD",   false, { 490.0f, 490.0f }, 395.0f, 106.0f, 74.0f };
+    // PITCH and MOD bow gently outward down the two ends of the board
+    ArcStrip pitchStrip { "PITCH", true,  { 74.0f + 900.0f, 530.0f }, 900.0f, 250.5f, 289.5f };
+    ArcStrip modStrip   { "MOD",   false, { 1526.0f - 900.0f, 530.0f }, 900.0f, 109.5f, 70.5f };
+
+    // chords (left), octave buttons, full screen
+    std::array<std::unique_ptr<BrassPlate>, zen::numChords> chordPlates;
+    std::array<float, zen::numChords> chordGlow {};
+    SteelButton chord7Btn { "7TH", 20.0f }, chord9Btn { "9TH", 20.0f }, chordSusBtn { "SUS", 20.0f },
+                chordSpreadBtn { "SPREAD", 20.0f }, chordStrumBtn { "STRUM", 20.0f };
+    WoodKnob strumSpeedKnob { "SPEED", 32.0f };
+    SteelButton octDownBtn { "OCT -", 18.0f }, octUpBtn { "OCT +", 18.0f }, fullScreenBtn { "FULL SCREEN", 18.0f };
+    juce::ComboBox keyScaleBox;
+    juce::String keyLabelsFor;   // what the key and chord labels were last made for
     juce::ComboBox bendBox, mpeBox;
     juce::Component presetHit;
 
@@ -157,7 +188,7 @@ public:
     void resized() override;
     void paint (juce::Graphics& g) override;
 
-    static constexpr int designSize = 980;
+    static constexpr int designW = Content::W, designH = Content::H;
     Content& getContent() { return content; }
 
     ~ZenEditor() override;
@@ -216,6 +247,6 @@ private:
         SteelButton backBtn { "BACK", 26.0f };
     };
     std::unique_ptr<FullWindow> full;
-    SteelButton fullBtn { "FULL", 22.0f }, returnBtn { "BRING IT BACK", 26.0f };
+    SteelButton returnBtn { "BRING IT BACK", 26.0f };
    #endif
 };

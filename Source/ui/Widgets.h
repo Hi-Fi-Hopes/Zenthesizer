@@ -830,7 +830,8 @@ public:
         g.drawEllipse (b.x - 9.0f, b.y - 9.0f, 18.0f, 18.0f, 1.0f);
 
         // name, just past the bottom end
-        const auto lp = theme::polar (c, r - 4.0f, aBottom + (aBottom > 180.0f ? -6.5f : 6.5f));
+        const float past = juce::radiansToDegrees (34.0f / r);   // ~34 px past the end, whatever the radius
+        const auto lp = theme::polar (c, r - 4.0f, aBottom + (aBottom > aTop ? past : -past));
         theme::burnText (g, label, juce::Rectangle<float> (60.0f, 14.0f).withCentre (lp), juce::Justification::centred,
                          theme::font (theme::FontKind::sansBold, 10.0f, 0.16f));
     }

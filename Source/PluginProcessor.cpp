@@ -161,6 +161,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout ZenProcessor::createLayout()
     toggle (ids::arpHold, "Arp Hold", false);
     choice (ids::bendRange, "Bend Range", { "1", "2", "3", "4", "5", "7", "12", "24" }, 1);
     choice (ids::mpe, "MPE", { "Off", "On, bend 12", "On, bend 24", "On, bend 48", "On, bend 96" }, 0);
+    choice (ids::keyScale, "Keys Outside Scale", { "Dim", "Mute", "Snap" }, 0);
+    toggle (ids::chord7, "Chord 7th", false);
+    toggle (ids::chord9, "Chord 9th", false);
+    toggle (ids::chordSus, "Chord Sus", false);
+    toggle (ids::chordSpread, "Chord Spread", false);
+    toggle (ids::chordStrum, "Chord Strum", false);
+    knob (ids::strumSpeed, "Strum Speed", 0.4f);
 
     return layout;
 }
@@ -575,7 +582,8 @@ bool ZenProcessor::loadUserPreset (const juce::File& f)
 // Applies a saved state. includePlaySettings = false keeps your scale, pads, etc. (loading a preset).
 void ZenProcessor::applyState (const juce::ValueTree& tree, bool includePlaySettings)
 {
-    static const juce::StringArray playIds { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre, ids::bendRange, ids::mpe };
+    static const juce::StringArray playIds { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre, ids::bendRange, ids::mpe,
+                                             ids::keyScale, ids::chord7, ids::chord9, ids::chordSus, ids::chordSpread, ids::chordStrum, ids::strumSpeed };
     if (includePlaySettings)
     {
         apvts.replaceState (tree);
@@ -665,6 +673,9 @@ zen::Settings ZenProcessor::readSettings() const
         s.bendRange = ranges[juce::jlimit (0, 7, iv (ids::bendRange))];
         static const int mpeRanges[] = { 0, 12, 24, 48, 96 };
         s.mpe = mpeRanges[juce::jlimit (0, 4, iv (ids::mpe))];
+        s.keyScale = (zen::KeyScale) juce::jlimit (0, 2, iv (ids::keyScale));
+        s.chord7 = bv (ids::chord7); s.chord9 = bv (ids::chord9); s.chordSus = bv (ids::chordSus);
+        s.chordSpread = bv (ids::chordSpread); s.chordStrum = bv (ids::chordStrum); s.strumSpeed = v (ids::strumSpeed);
     }
     s.loopLevel = loopLevel.load();
     s.bpm = hostBpm.load();
@@ -791,7 +802,8 @@ void ZenProcessor::setCurrentProgram (int index)
     };
 
     // Defaults first. Play settings (scale, root, octave, pads) are the player's, so they stay.
-    static const juce::StringArray keep { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre, ids::bendRange, ids::mpe };
+    static const juce::StringArray keep { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre, ids::bendRange, ids::mpe,
+                                          ids::keyScale, ids::chord7, ids::chord9, ids::chordSus, ids::chordSpread, ids::chordStrum, ids::strumSpeed };
     for (auto* param : getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (param))
         {
@@ -877,6 +889,12 @@ void ZenProcessor::setStateInformation (const void* data, int sizeInBytes)
             auto pads = juce::StringArray::fromTokens (tree.getProperty ("padNotes", "").toString(), ",", "");
             if (pads.size() == zen::numPlates)
                 for (int p = 0; p < zen::numPlates; ++p) padNotes[(size_t) p].store (pads[p].getIntValue());
+            else if (pads.size() == 16)   // saved before the keys grew to 18: 12 keys, then A-D
+            {
+                for (int p = 0; p < zen::numPlates; ++p) padNotes[(size_t) p].store (-1);
+                for (int p = 0; p < 12; ++p) padNotes[(size_t) p].store (pads[p].getIntValue());
+                for (int p = 0; p < 4; ++p) padNotes[(size_t) (zen::timbrePlate0 + p)].store (pads[12 + p].getIntValue());
+            }
             userPresetName = tree.getProperty ("userPreset", "").toString();
             loopLevel.store ((float) (double) tree.getProperty ("loopLevel", 0.8));
             if (tree.hasProperty ("drumPattern"))

@@ -55,6 +55,10 @@ namespace ids
     inline constexpr const char* arpGate = "arpGate"; inline constexpr const char* arpHold = "arpHold";
     inline constexpr const char* bendRange = "bendRange";
     inline constexpr const char* mpe = "mpe";
+    inline constexpr const char* keyScale = "keyScale";
+    inline constexpr const char* chord7 = "chord7";   inline constexpr const char* chord9 = "chord9";
+    inline constexpr const char* chordSus = "chordSus"; inline constexpr const char* chordSpread = "chordSpread";
+    inline constexpr const char* chordStrum = "chordStrum"; inline constexpr const char* strumSpeed = "strumSpeed";
 
     inline juce::String slotSrc (int i) { return "slot" + juce::String (i + 1) + "Src"; }
     inline juce::String slotDst (int i) { return "slot" + juce::String (i + 1) + "Dst"; }
@@ -108,6 +112,7 @@ public:
 
     // Plates: mouse presses from the UI, and pad learning.
     void setUiPlate (int plate, float pressure) { engine.setUiPlate (plate, pressure); }
+    void setUiChord (int degree, float pressure) { engine.setUiChord (degree, pressure); }
     int  getPadNote (int plate) const           { return padNotes[(size_t) plate].load(); }
     void setPadNote (int plate, int note);
     void resetPadNotes();

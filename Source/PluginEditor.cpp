@@ -13,7 +13,13 @@ namespace
     constexpr float C = 490.0f;
     const juce::Point<float> centre (C, C);
 
-    juce::Point<float> pol (float r, float deg) { return theme::polar (centre, r, deg); }
+    juce::Point<float> pol (float r, float deg) { return theme::polar (centre, r, deg); }   // old slab (core) coordinates
+
+    // the board: everything curves around the porthole
+    const juce::Point<float> boardCentre (800.0f, 430.0f);
+    juce::Point<float> bpol (float r, float deg) { return theme::polar (boardCentre, r, deg); }
+    constexpr float outerArc = 568.0f, innerArc = 448.0f;
+    const juce::Rectangle<int> presetArea (1262, 84, 196, 48);
 
 }
 
@@ -276,8 +282,7 @@ Content::Content (ZenProcessor& p)
     {
         tabs[(size_t) i] = std::make_unique<TabButton> (tabNames[i]);
         addAndMakeVisible (*tabs[(size_t) i]);
-        const float a = -37.5f + 12.5f * (float) i;
-        place (*tabs[(size_t) i], pol (334.0f, a), 70.0f, 34.0f, a);
+        place (*tabs[(size_t) i], { 560.0f + 80.0f * (float) i, 112.0f }, 76.0f, 34.0f);
         tabs[(size_t) i]->onClick = [this, i] { showPage (i); };
     }
     const char* visNames[] = { "OFF", "LOW", "FULL" };
@@ -285,8 +290,7 @@ Content::Content (ZenProcessor& p)
     {
         visButtons[(size_t) i] = std::make_unique<SteelButton> (visNames[i], 20.0f);
         addAndMakeVisible (*visButtons[(size_t) i]);
-        const float a = 51.0f + 9.0f * (float) i;
-        place (*visButtons[(size_t) i], pol (352.0f, a), 48.0f, 54.0f, a, 22.0f);
+        place (*visButtons[(size_t) i], bpol (outerArc, 63.0f + 9.0f * (float) i), 48.0f, 54.0f, 0.0f, 22.0f);
         visButtons[(size_t) i]->onClick = [this, i] { proc.visualsMode.store (i); };
     }
     for (auto* b : { &prevBtn, &nextBtn })
@@ -294,18 +298,17 @@ Content::Content (ZenProcessor& p)
         addAndMakeVisible (b);
         b->showLed = false;
     }
-    place (prevBtn, pol (382.0f, 204.0f), 48.0f, 40.0f, 24.0f, 8.0f);
-    place (nextBtn, pol (382.0f, 156.0f), 48.0f, 40.0f, -24.0f, 8.0f);
+    place (prevBtn, { 1236.0f, 98.0f }, 48.0f, 40.0f, 0.0f, 8.0f);
+    place (nextBtn, { 1484.0f, 98.0f }, 48.0f, 40.0f, 0.0f, 8.0f);
     prevBtn.onClick = [this] { stepPreset (-1); };
     nextBtn.onClick = [this] { stepPreset (1); };
     // ---- the looper, along the bottom right of the slab (always there, on every page)
     {
-        const float angles[3] = { 121.0f, 133.0f, 145.0f };
         SteelButton* btns[3] = { &loopBtn, &loopStopBtn, &loopUndoBtn };
         for (int i = 0; i < 3; ++i)
         {
             addAndMakeVisible (btns[i]);
-            place (*btns[i], pol (388.0f, angles[i]), 54.0f, 56.0f, 0.0f, 23.0f);
+            place (*btns[i], bpol (innerArc, 70.0f + 10.0f * (float) i), 54.0f, 56.0f, 0.0f, 23.0f);
         }
         loopBtn.setTriggeredOnMouseDown (true);       // timing matters: act on the touch, not the release
         loopStopBtn.setTriggeredOnMouseDown (true);
@@ -323,7 +326,7 @@ Content::Content (ZenProcessor& p)
         loopUndoBtn.setTooltip ("Tap: undo the last overdub. Hold: clear the loop.");
 
         addAndMakeVisible (loopLevelKnob);
-        place (loopLevelKnob, pol (386.0f, 237.0f), 70.0f, 66.0f, 0.0f, 23.0f);
+        place (loopLevelKnob, bpol (innerArc, 122.0f), 70.0f, 66.0f, 0.0f, 23.0f);
         loopLevelKnob.setRange (0.0, 1.0);
         loopLevelKnob.setValue (proc.loopLevel.load(), juce::dontSendNotification);
         loopLevelKnob.setDoubleClickReturnValue (true, 0.8);
@@ -340,32 +343,92 @@ Content::Content (ZenProcessor& p)
     modStrip.setTooltip ("Mod wheel: slide to set, it stays. Your keyboard's mod wheel moves it too.");
 
     addAndMakeVisible (presetHit);
-    presetHit.setBounds (390, 838, 200, 40);
+    presetHit.setBounds (presetArea);
     presetHit.addMouseListener (this, false);
     presetHit.setMouseCursor (juce::MouseCursor::PointingHandCursor);
 
-    // ---- plates --------------------------------------------------------------------
+    // ---- the keys (an octave and a half, piano-style) and the timbre plates A-D --------
     for (int i = 0; i < zen::numPlates; ++i)
     {
-        const bool timbre = i >= zen::numNotePlates;
-        const float dia = timbre ? 56.0f : 46.0f;
-        plates[(size_t) i] = std::make_unique<BrassPlate> (timbre ? juce::String::charToString ((juce::juce_wchar) ('A' + i - 12)) : juce::String (i + 1), dia);
+        const bool timbre = i >= zen::timbrePlate0;
+        static const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+        const bool black = ! timbre && juce::String (names[i % 12]).contains ("#");
+        const float dia = timbre ? 56.0f : (black ? 50.0f : 58.0f);
+        plates[(size_t) i] = std::make_unique<BrassPlate> (timbre ? juce::String::charToString ((juce::juce_wchar) ('A' + i - zen::timbrePlate0))
+                                                                  : juce::String (names[i % 12]), dia);
         auto* pl = plates[(size_t) i].get();
         addAndMakeVisible (pl);
-        static const float timbreAngles[4] = { 213.0f, 193.0f, 167.0f, 147.0f };
-        const juce::Point<float> pos = timbre ? pol (200.0f, timbreAngles[i - 12])
-                                              : pol (318.0f, 244.0f - (float) i * 128.0f / 11.0f);
-        place (*pl, pos, dia + 70.0f, dia + 70.0f);
+        juce::Point<float> pos;
+        if (timbre) pos = bpol (outerArc, 90.0f + 9.0f * (float) (i - zen::timbrePlate0));
+        else
+        {
+            // white keys along a gentle smile, black keys a row up between them
+            int whitesBefore = 0;
+            for (int k = 0; k < i; ++k) if (! juce::String (names[k % 12]).contains ("#")) ++whitesBefore;
+            const float x = 330.0f + 94.0f * ((float) whitesBefore - (black ? 0.5f : 0.0f));
+            pos = { x, (black ? 752.0f : 856.0f) - 0.00012f * (x - 800.0f) * (x - 800.0f) };
+        }
+        place (*pl, pos, dia + 66.0f, dia + 66.0f);
         pl->onPress = [this, i] (float pr)
         {
             if (learning) { learnPlate = i; lastInCount = proc.display().inCount.load(); return; }
             proc.setUiPlate (i, pr);
         };
         pl->onRelease = [this, i] { if (! learning) proc.setUiPlate (i, -1.0f); };
-        if (timbre) pl->onRightClick = [this, i] { arm ((int) zen::Src::plateA + (i - 12)); };
+        if (timbre) pl->onRightClick = [this, i] { arm ((int) zen::Src::plateA + (i - zen::timbrePlate0)); };
         pl->setTooltip (timbre ? "Timbre plate: hold to play its modulation. Double-tap to lock it on (double-tap again to unlock). Right-click to assign it."
-                               : "Note plate: click and hold to play, drag up for more pressure.");
+                               : "Key: click and hold to play, drag up for more pressure.");
     }
+
+    // ---- chords (left side): the seven chords of the key, and how they're voiced -------------
+    for (int i = 0; i < zen::numChords; ++i)
+    {
+        chordPlates[(size_t) i] = std::make_unique<BrassPlate> ("", 48.0f);
+        auto* pl = chordPlates[(size_t) i].get();
+        addAndMakeVisible (pl);
+        place (*pl, bpol (outerArc, 297.0f - 9.0f * (float) i), 110.0f, 110.0f);
+        pl->onPress = [this, i] (float pr) { proc.setUiChord (i, pr); chordGlow[(size_t) i] = 1.0f; };
+        pl->onRelease = [this, i] { proc.setUiChord (i, -1.0f); chordGlow[(size_t) i] = 0.99f; };
+        pl->setTooltip ("Chord: plays this chord of the key set on the PLAY page. Press harder for more pressure.");
+    }
+    {
+        SteelButton* mods[] = { &chord7Btn, &chord9Btn, &chordSusBtn, &chordSpreadBtn, &chordStrumBtn };
+        const char* modIds[] = { ids::chord7, ids::chord9, ids::chordSus, ids::chordSpread, ids::chordStrum };
+        const char* tips[] = { "Adds the 7th", "Adds the 9th", "Swaps the 3rd for a 2nd (or a 4th)", "Opens the chord out: root down, 3rd up (lovely for pads)",
+                               "Strums the chord low to high (SPEED sets how fast)" };
+        for (int i = 0; i < 5; ++i)
+        {
+            auto& b = *mods[i];
+            b.setClickingTogglesState (true);
+            addAndMakeVisible (b);
+            place (b, bpol (innerArc, 290.0f - 10.0f * (float) i), 64.0f, 56.0f, 0.0f, 23.0f);
+            buttonAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (proc.apvts, modIds[i], b));
+            b.setTooltip (tips[i]);
+        }
+        addAndMakeVisible (strumSpeedKnob);
+        place (strumSpeedKnob, bpol (innerArc, 238.0f), 70.0f, 66.0f, 0.0f, 23.0f);
+        sliderAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (proc.apvts, ids::strumSpeed, strumSpeedKnob));
+    }
+
+    // ---- octave, full screen ---------------------------------------------------------------
+    for (auto* b : { &octDownBtn, &octUpBtn, &fullScreenBtn }) { b->showLed = false; addAndMakeVisible (b); }
+    place (octDownBtn, { 1350.0f, 846.0f }, 64.0f, 56.0f, 0.0f, 23.0f);
+    place (octUpBtn, { 1424.0f, 846.0f }, 64.0f, 56.0f, 0.0f, 23.0f);
+    auto stepOctave = [this] (int d)
+    {
+        const int o = juce::jlimit (0, 6, (int) std::lround (param (ids::octave)) + d);
+        setParam (ids::octave, (float) o);
+        updateKeyLabels();
+        repaint (1300, 790, 180, 30);
+    };
+    octDownBtn.onClick = [stepOctave] { stepOctave (-1); };
+    octUpBtn.onClick = [stepOctave] { stepOctave (1); };
+    place (fullScreenBtn, bpol (innerArc, 100.0f), 110.0f, 56.0f, 0.0f, 23.0f);
+    fullScreenBtn.onClick = [this] { if (onFullScreen) onFullScreen(); };
+    fullScreenBtn.setTooltip ("Fill the screen (Esc comes back)");
+   #if JUCE_ANDROID || JUCE_IOS
+    fullScreenBtn.setVisible (false);   // the app is always full screen
+   #endif
 
     // ---- SYNTH page ------------------------------------------------------------------
     setupSynthPage();
@@ -478,6 +541,9 @@ Content::Content (ZenProcessor& p)
         combo (scaleBox, ZenProcessor::scaleNames(), ids::scale, { 370, 278, 130, 24 });
         combo (octaveBox, { "oct -3", "oct -2", "oct -1", "oct 0", "oct +1", "oct +2", "oct +3" }, ids::octave, { 510, 278, 80, 24 });
         toggle (latchBtn, ids::latchTimbre, { 646.0f, 290.0f });
+        combo (keyScaleBox, { "keys outside it: dim", "keys outside it: mute", "keys outside it: snap" }, ids::keyScale, { 330, 310, 196, 24 });
+        keyScaleBox.setTooltip ("Keys outside the scale: DIM still plays them, MUTE silences them, SNAP plays the nearest note in the scale. "
+                                "The chords are built from the same key and scale.");
 
         toggle (arpOnBtn, ids::arpOn, { 244.0f, 392.0f });
         combo (arpModeBox, ZenProcessor::arpModeNames(), ids::arpMode, { 284, 380, 108, 24 });
@@ -510,7 +576,7 @@ Content::Content (ZenProcessor& p)
             learning = ! learning;
             learnPlate = -1;
             learnBtn.setToggleState (learning, juce::dontSendNotification);
-            repaint (330, 600, 320, 60);
+            core.repaint (330, 600, 320, 60);
         };
         resetPadsBtn.onClick = [this] { proc.resetPadNotes(); };
         combo (bendBox, { "bend 1", "bend 2", "bend 3", "bend 4", "bend 5", "bend 7", "bend 12", "bend 24" }, ids::bendRange, { 664, 490, 84, 24 });
@@ -518,13 +584,13 @@ Content::Content (ZenProcessor& p)
         mpeBox.setTooltip ("MPE controllers: each note on its own channel (2-16) bends, presses and slides by itself. "
                            "Pads only play plates on the pad channel you pick while MPE is on.");
 
-        pageLabels.push_back ({ play, "NOTE PLATES", { 443, 252 } });
+        pageLabels.push_back ({ play, "KEY AND SCALE  (KEYS AND CHORDS)", { 443, 252 } });
         pageLabels.push_back ({ play, "ARPEGGIATOR", { 470, 350 } });
         pageLabels.push_back ({ play, "LAUNCHKEY PADS", { 470, 460 } });
         pageLabels.push_back ({ play, "PITCH BEND RANGE", { 706, 524 } });
         pageLabels.push_back ({ play, "MPE CONTROLLER", { 233, 524 } });
-        pageLabels.push_back ({ play, "default: pads C1-B1 play plates 1-12, C2-D#2 play A-D", { 490, 562 } });
-        pageLabels.push_back ({ play, "to remap: LEARN, click a plate, then hit a pad", { 490, 582 } });
+        pageLabels.push_back ({ play, "default: pads C1-B1 play the first octave of keys, C2-D#2 play A-D", { 490, 562 } });
+        pageLabels.push_back ({ play, "to remap: LEARN, click a key or plate, then hit a pad", { 490, 582 } });
     }
 
     // ---- WAVES page --------------------------------------------------------------------------
@@ -540,9 +606,19 @@ Content::Content (ZenProcessor& p)
     pageComps[beat].push_back (&beatPanel);
     engineB.onScreenClick = [this] { showPage (waves); };
 
+    // every page's controls move into the core (same coordinates, now centred on the porthole)
+    addAndMakeVisible (core);
+    core.setBounds (juce::roundToInt (coreX), juce::roundToInt (coreY), 980, 980);
+    core.toBack();
+    core.painter = [this] (juce::Graphics& g) { paintCore (g); };
+    for (int pg = 0; pg < numPages; ++pg)
+        for (auto* c : pageComps[pg]) core.addChildComponent (c);
+    for (auto& r : slotRows) core.addChildComponent (*r);
+
     for (int i = 0; i < numPages; ++i) tabs[(size_t) i]->setToggleState (i == 0, juce::dontSendNotification);
     showPage (synth);
-    setSize (980, 980);
+    updateKeyLabels();
+    setSize (W, H);
     lastTick = juce::Time::getMillisecondCounterHiRes();
     startTimerHz (60);
 }
@@ -660,7 +736,7 @@ void Content::showHint (const juce::String& t)
 {
     hint = t;
     hintTime = juce::Time::getMillisecondCounter();
-    repaint (330, 600, 320, 60);
+    core.repaint (330, 600, 320, 60);
 }
 
 void Content::arm (int src)
@@ -674,7 +750,7 @@ void Content::arm (int src)
     for (auto& k : engineB.knobs) mark (*k);
     for (int i = 0; i < 4; ++i)
     {
-        auto& pl = *plates[(size_t) (12 + i)];
+        auto& pl = *plates[(size_t) (zen::timbrePlate0 + i)];
         pl.armed = armedSrc == (int) zen::Src::plateA + i;
         pl.armedColour = col;
         pl.repaint();
@@ -684,7 +760,7 @@ void Content::arm (int src)
         if (page != synth) showPage (synth);
         hint = "drag a ringed knob to set how much " + ZenProcessor::srcNames()[armedSrc] + " moves it  -  double-click removes  -  click again when done";
     }
-    repaint (0, 600, 980, 80);
+    core.repaint (0, 600, 980, 80);
 }
 
 void Content::showPage (int p)
@@ -721,18 +797,18 @@ namespace
     juce::File slabFile (int pixels)
     {
         // bump the version when the wood or the lettering changes
-        return ZenProcessor::dataFolder().getChildFile ("slab-v4-" + juce::String (pixels) + ".png");
+        return ZenProcessor::dataFolder().getChildFile ("plank-v1-" + juce::String (pixels) + ".png");
     }
 }
 
 void Content::setRenderScale (float ppu)
 {
    #if JUCE_ANDROID || JUCE_IOS
-    const float cap = 3072.0f;
+    const float cap = 4096.0f;
    #else
-    const float cap = 2560.0f;
+    const float cap = 3840.0f;
    #endif
-    const int want = (int) juce::jlimit (640.0f, cap, std::round (980.0f * ppu / 128.0f) * 128.0f);
+    const int want = (int) juce::jlimit (1024.0f, cap, std::round ((float) W * ppu / 128.0f) * 128.0f);   // pixels across
     if (want == (int) slabPixels && slab.isValid()) return;
     slabPixels = (float) want;
     ++renderGeneration;
@@ -754,7 +830,7 @@ void Content::setRenderScale (float ppu)
 
     if (! slab.isValid())
     {
-        finishSlab (wood::render (want), want);   // nothing to show yet: draw it now
+        finishSlab (plank::render (want), want);   // nothing to show yet: draw it now
         return;
     }
 
@@ -762,7 +838,7 @@ void Content::setRenderScale (float ppu)
     const int gen = renderGeneration;
     juce::Thread::launch ([safe = juce::Component::SafePointer<Content> (this), want, gen]
     {
-        auto img = wood::render (want);
+        auto img = plank::render (want);
         juce::MessageManager::callAsync ([safe, img, want, gen]
         {
             if (safe != nullptr && safe->renderGeneration == gen) safe->finishSlab (img, want);
@@ -772,14 +848,15 @@ void Content::setRenderScale (float ppu)
 
 void Content::finishSlab (juce::Image img, int want)
 {
-    // static burned lettering, baked into the slab
+    // static burned lettering, baked into the board
     {
         juce::Graphics g (img);
-        g.addTransform (juce::AffineTransform::scale ((float) want / 980.0f));
-        theme::arcText (g, "zenthesizer", centre, 368.0f, 0.0f, theme::font (theme::FontKind::serif, 44.0f));
-        theme::arcText (g, "TOUCH  SYNTHESIZER", centre, 386.0f, juce::degreesToRadians (-56.0f), theme::font (theme::FontKind::sans, 11.0f, 0.24f));
-        theme::arcText (g, "VISUALS", centre, 392.0f, juce::degreesToRadians (60.0f), theme::font (theme::FontKind::sans, 11.0f, 0.24f));
-        theme::arcText (g, "TIMBRE", centre, 250.0f, juce::MathConstants<float>::pi, theme::font (theme::FontKind::sans, 11.0f, 0.24f), theme::burn, true);
+        g.addTransform (juce::AffineTransform::scale ((float) want / (float) W));
+        theme::burnText (g, "zenthesizer", { 150.0f, 88.0f, 260.0f, 44.0f }, juce::Justification::centred, theme::font (theme::FontKind::serif, 38.0f));
+        theme::arcText (g, "VISUALS", boardCentre, outerArc + 56.0f, juce::degreesToRadians (72.0f), theme::font (theme::FontKind::sansBold, 11.5f, 0.22f));
+        theme::arcText (g, "TIMBRE", boardCentre, outerArc + 56.0f, juce::degreesToRadians (103.5f), theme::font (theme::FontKind::sansBold, 11.5f, 0.22f));
+        theme::arcText (g, "LOOPER", boardCentre, innerArc, juce::degreesToRadians (61.5f), theme::font (theme::FontKind::sansBold, 11.0f, 0.22f));
+        theme::arcText (g, "CHORD STYLE", boardCentre, innerArc, juce::degreesToRadians (298.5f), theme::font (theme::FontKind::sansBold, 11.0f, 0.22f));
     }
     auto& mem = slabMemory();
     if (mem.size() > 2) mem.erase (mem.begin());
@@ -805,17 +882,45 @@ void Content::finishSlab (juce::Image img, int want)
 void Content::paint (juce::Graphics& g)
 {
     if (slab.isValid())
-        g.drawImage (slab, 0, 0, 980, 980, 0, 0, slab.getWidth(), slab.getHeight());
+        g.drawImage (slab, 0, 0, W, H, 0, 0, slab.getWidth(), slab.getHeight());
     else
     {
         g.fillAll (theme::table);
         g.setColour (juce::Colour (0xffc79865));
-        g.fillEllipse (40.0f, 40.0f, 900.0f, 900.0f);
+        g.fillRect (26.0f, 50.0f, 1548.0f, 900.0f);
     }
-
     const auto clip = g.getClipBounds();
 
-    // page headings
+    // the chords heading: the key they come from
+    if (clip.intersects (juce::Rectangle<int> (120, 120, 120, 700)))
+    {
+        const int root = (int) std::lround (param (ids::root)), sc = (int) std::lround (param (ids::scale));
+        const juce::String t = "CHORDS  -  " + ZenProcessor::rootNames()[root] + " " + juce::String (zen::chordScale (sc).name).toUpperCase();
+        theme::arcText (g, t, boardCentre, outerArc + 56.0f, juce::degreesToRadians (270.0f), theme::font (theme::FontKind::sansBold, 11.5f, 0.22f));
+    }
+
+    // preset name, top right between PREV and NEXT
+    if (clip.intersects (presetArea))
+    {
+        const auto name = proc.currentPresetName();
+        const float size = name.length() > 16 ? 20.0f : (name.length() > 12 ? 23.0f : 26.0f);
+        theme::burnText (g, name, presetArea.toFloat(), juce::Justification::centred, theme::font (theme::FontKind::serif, size));
+    }
+
+    // the keys' octave
+    if (clip.intersects (juce::Rectangle<int> (1300, 790, 180, 30)))
+    {
+        const int oct = (int) std::lround (param (ids::octave)) - 3;
+        theme::burnText (g, "OCTAVE  " + juce::MidiMessage::getMidiNoteName (zen::keyNote (0, oct), true, true, 3),
+                         { 1300.0f, 796.0f, 174.0f, 16.0f }, juce::Justification::centred, theme::font (theme::FontKind::sansBold, 11.0f, 0.2f));
+    }
+}
+
+// The middle of the board (in the old slab's coordinates): page headings, the readout under the porthole.
+void Content::paintCore (juce::Graphics& g)
+{
+    const auto clip = g.getClipBounds();
+
     for (auto& pl : pageLabels)
         if (pl.page == page)
         {
@@ -838,7 +943,7 @@ void Content::paint (juce::Graphics& g)
     {
         juce::String text = hint;
         if (text.isEmpty() && learning)
-            text = learnPlate < 0 ? "LEARN: click a plate, then hit a pad" : "now hit the pad for plate " + plates[(size_t) learnPlate]->label;
+            text = learnPlate < 0 ? "LEARN: click a key or plate, then hit a pad" : "now hit the pad for " + plates[(size_t) learnPlate]->label;
         if (text.isEmpty() && page == synth)
         {
             const float hz = proc.display().cutoffHzNow.load();
@@ -854,20 +959,12 @@ void Content::paint (juce::Graphics& g)
                             theme::font (theme::FontKind::sans, longText ? 9.5f : 10.5f, 0.12f), theme::burn, true, false);
         }
     }
-
-    // preset name along the bottom
-    const juce::Rectangle<int> presetArea (340, 830, 300, 56);
-    if (clip.intersects (presetArea))
-    {
-        const auto name = proc.currentPresetName();
-        theme::arcText (g, name, centre, 374.0f, juce::MathConstants<float>::pi, theme::font (theme::FontKind::serif, 26.0f), theme::burn, true);
-    }
 }
 
 void Content::mouseDown (const juce::MouseEvent& e)
 {
     if (e.eventComponent == &presetHit) return;   // the preset menu opens on release (see mouseUp)
-    if (e.eventComponent == this && armedSrc != 0) arm (armedSrc);   // click on bare wood: done assigning
+    if ((e.eventComponent == this || e.eventComponent == &core) && armedSrc != 0) arm (armedSrc);   // click on bare wood: done assigning
 }
 
 void Content::mouseUp (const juce::MouseEvent& e)
@@ -976,7 +1073,7 @@ void Content::savePresetAs()
         if (safe == nullptr || r != 1) return;
         const auto name = w->getTextEditorContents ("name");
         safe->showHint (safe->proc.saveUserPreset (name) ? "saved " + name.trim() : "couldn't save that preset");
-        safe->repaint (340, 830, 300, 56);
+        safe->repaint (presetArea);
     }), true);
 }
 
@@ -984,7 +1081,7 @@ void Content::stepPreset (int delta)
 {
     const int n = proc.getNumPrograms();
     proc.setCurrentProgram ((proc.getCurrentProgram() + delta + n) % n);
-    repaint (340, 830, 300, 56);
+    repaint (presetArea);
 }
 
 void Content::updateModRings()
@@ -1016,24 +1113,58 @@ void Content::updateModRings()
         for (int sI = 0; sI < zen::numSlots && sub.isEmpty(); ++sI)
             if ((int) std::lround (proc.apvts.getRawParameterValue (ids::slotSrc (sI))->load()) == (int) zen::Src::plateA + i)
                 sub = dstShort ((int) std::lround (proc.apvts.getRawParameterValue (ids::slotDst (sI))->load()));
-        auto& pl = *plates[(size_t) (12 + i)];
+        auto& pl = *plates[(size_t) (zen::timbrePlate0 + i)];
         if (pl.subLabel != sub) { pl.subLabel = sub; pl.repaint(); }
     }
-    // note plates: the note they play (or, on PLAY, the pad that plays them)
-    const int root = (int) std::lround (param (ids::root)), sc = (int) std::lround (param (ids::scale)), oct = (int) std::lround (param (ids::octave)) - 3;
+    updateKeyLabels();
+}
+
+// Key labels: the note each key plays (dimmed outside the scale), or on PLAY the pad that plays it;
+// the chord buttons: the chord's numeral and name in the current key.
+void Content::updateKeyLabels()
+{
+    const int root = (int) std::lround (param (ids::root)), sc = (int) std::lround (param (ids::scale));
+    const int oct = (int) std::lround (param (ids::octave)) - 3, mode = (int) std::lround (param (ids::keyScale));
+    const bool c7 = param (ids::chord7) > 0.5f, c9 = param (ids::chord9) > 0.5f, sus = param (ids::chordSus) > 0.5f, spread = param (ids::chordSpread) > 0.5f;
+    juce::String sig;
+    sig << root << "/" << sc << "/" << oct << "/" << mode << "/" << (int) c7 << (int) c9 << (int) sus << (int) spread << "/" << page;
+    if (page == play) for (int i = 0; i < zen::numPlates; ++i) sig << "," << proc.getPadNote (i);
+    if (sig == keyLabelsFor) return;
+    keyLabelsFor = sig;
+
     for (int i = 0; i < zen::numPlates; ++i)
     {
+        auto& pl = *plates[(size_t) i];
         juce::String sub;
+        float alpha = 1.0f;
         if (page == play)
         {
             const int n = proc.getPadNote (i);
-            sub = n >= 0 ? "pad " + juce::MidiMessage::getMidiNoteName (n, true, true, 3) : "no pad";
+            sub = n >= 0 ? "pad " + juce::MidiMessage::getMidiNoteName (n, true, true, 3) : (i < zen::timbrePlate0 ? "" : "no pad");
         }
-        else if (i < zen::numNotePlates) sub = juce::MidiMessage::getMidiNoteName (zen::plateNote (i, root, sc, oct), true, true, 3);
+        else if (i < zen::timbrePlate0)
+        {
+            const int note = zen::keyNote (i, oct);
+            sub = juce::MidiMessage::getMidiNoteName (note, true, true, 3);
+            if (! zen::inScale (note, root, sc))
+            {
+                alpha = mode == (int) zen::KeyScale::mute ? 0.22f : 0.42f;
+                if (mode == (int) zen::KeyScale::snap) sub = "to " + juce::MidiMessage::getMidiNoteName (zen::snapToScale (note, root, sc), true, true, 3);
+            }
+        }
         else continue;
-        auto& pl = *plates[(size_t) i];
         if (pl.subLabel != sub) { pl.subLabel = sub; pl.repaint(); }
+        if (std::abs (pl.getAlpha() - alpha) > 0.01f) pl.setAlpha (alpha);
     }
+    for (int d = 0; d < zen::numChords; ++d)
+    {
+        auto& pl = *chordPlates[(size_t) d];
+        const auto c = zen::buildChord (d, root, sc, oct, c7, c9, sus, spread);
+        const juce::String label (juce::CharPointer_UTF8 (zen::chordNumeral (d, sc).c_str()));
+        const juce::String name (zen::chordName (c, zen::keyUsesFlats (root, sc)));
+        if (pl.label != label || pl.subLabel != name) { pl.label = label; pl.subLabel = name; pl.repaint(); }
+    }
+    repaint (0, 120, 300, 800);   // the chords heading (key and scale)
 }
 
 void Content::timerCallback()
@@ -1088,8 +1219,16 @@ void Content::timerCallback()
         pl.setLevel (d.plateLevel[(size_t) i].load());
         if (const bool lk = d.plateLocked[(size_t) i].load(); lk != pl.locked) { pl.locked = lk; pl.repaint(); }
         if (vis > 0 && lowFrame) pl.tick (dt * (vis == 2 ? 1.0f : 2.0f));
-        const bool wantArmed = (learning && learnPlate == i) || (armedSrc == (int) zen::Src::plateA + (i - 12) && i >= 12);
+        const bool wantArmed = (learning && learnPlate == i) || (i >= zen::timbrePlate0 && armedSrc == (int) zen::Src::plateA + (i - zen::timbrePlate0));
         if (pl.armed != wantArmed) { pl.armed = wantArmed; pl.armedColour = learning ? theme::red : theme::srcColour (armedSrc); pl.repaint(); }
+    }
+
+    for (int i = 0; i < zen::numChords; ++i)
+    {
+        auto& gl = chordGlow[(size_t) i];
+        if (gl < 1.0f && gl > 0.0f) gl = gl < 0.02f ? 0.0f : gl * 0.85f;   // fades after you let go
+        chordPlates[(size_t) i]->setLevel (gl);
+        if (vis > 0 && lowFrame) chordPlates[(size_t) i]->tick (dt * (vis == 2 ? 1.0f : 2.0f));
     }
 
     if (page == synth)
@@ -1111,21 +1250,22 @@ void Content::timerCallback()
         {
             proc.setPadNote (learnPlate, d.inNote.load());
             learnPlate = -1;
-            repaint (330, 600, 320, 60);
+            core.repaint (330, 600, 320, 60);
         }
     }
 
     if (hint.isNotEmpty() && armedSrc == 0 && hintTime != 0 && juce::Time::getMillisecondCounter() - hintTime > 6000)
     {
         hint.clear(); hintTime = 0;
-        repaint (330, 600, 320, 60);
+        core.repaint (330, 600, 320, 60);
     }
 
     if (frame % 10 == 0)
     {
-        repaint (330, 600, 320, 60);       // readout
-        repaint (340, 830, 300, 56);       // preset name (host may change it)
-        if (page == play) repaint (arpTempoArea());
+        core.repaint (330, 600, 320, 60);       // readout
+        repaint (presetArea);       // preset name (host may change it)
+        repaint (1300, 790, 180, 30); // octave readout
+        if (page == play) core.repaint (arpTempoArea());
     }
 }
 
@@ -1160,17 +1300,15 @@ ZenEditor::ZenEditor (ZenProcessor& p) : AudioProcessorEditor (p), content (p)
     juce::Desktop::getInstance().addGlobalMouseListener (&gestures);
     content.showHint ("two fingers on the wood to zoom  -  double-tap the wood to zoom in  -  FIT zooms out");
    #else
-    constrainer.setFixedAspectRatio (1.0);
-    constrainer.setSizeLimits (560, 560, 1400, 1400);
-    for (auto* b : { &fullBtn, &returnBtn }) { b->showLed = false; b->labelColour = theme::bone; }
-    addAndMakeVisible (fullBtn);
+    constrainer.setFixedAspectRatio ((double) designW / (double) designH);
+    constrainer.setSizeLimits (800, 500, 3200, 2000);
+    returnBtn.showLed = false; returnBtn.labelColour = theme::bone;
     addChildComponent (returnBtn);
-    fullBtn.setTooltip ("Fill the screen (Esc comes back)");
-    fullBtn.onClick = [this] { setFullscreen (true); };
     returnBtn.onClick = [this] { setFullscreen (false); };
+    content.onFullScreen = [this] { setFullscreen (! isFullscreen()); };
    #endif
     setConstrainer (&constrainer);
-    setSize (860, 860);
+    setSize (1280, 800);
 }
 
 void ZenEditor::paint (juce::Graphics& g)
@@ -1195,20 +1333,18 @@ ZenEditor::~ZenEditor()
 void ZenEditor::resized()
 {
    #if ! (JUCE_ANDROID || JUCE_IOS)
-    fullBtn.setBounds (8, 8, 58, 52);
     returnBtn.setBounds (getLocalBounds().withSizeKeepingCentre (150, 70).translated (0, 10));
     if (full != nullptr) return;   // the slab is in the fullscreen window
    #endif
-    const float side = (float) std::min (getWidth(), getHeight());
     const float oldBase = baseScale;
-    baseScale = side / (float) designSize;
+    baseScale = std::min ((float) getWidth() / (float) designW, (float) getHeight() / (float) designH);
     if (zoom <= 1.001f)
-        origin = { ((float) getWidth() - side) * 0.5f, ((float) getHeight() - side) * 0.5f };
+        origin = { ((float) getWidth() - (float) designW * baseScale) * 0.5f, ((float) getHeight() - (float) designH * baseScale) * 0.5f };
     else
         origin = origin * (baseScale / std::max (0.0001f, oldBase));
 
    #if JUCE_ANDROID || JUCE_IOS
-    // the device buttons sit in the screen's top corners, outside the round slab
+    // the device buttons sit in the screen's top corners
     const float bs = std::max (0.75f, baseScale);
     const int bw = juce::roundToInt (64.0f * bs), bh = juce::roundToInt (58.0f * bs);
     midiBtn.dome = audioBtn.dome = 26.0f * bs;
@@ -1222,13 +1358,13 @@ void ZenEditor::resized()
 
 void ZenEditor::clampOrigin()
 {
-    const float size = (float) designSize * baseScale * zoom;
+    const float k = baseScale * zoom;
     auto axis = [] (float o, float extent, float avail)
     {
         if (extent <= avail) return (avail - extent) * 0.5f;
         return juce::jlimit (avail - extent, 0.0f, o);
     };
-    origin = { axis (origin.x, size, (float) getWidth()), axis (origin.y, size, (float) getHeight()) };
+    origin = { axis (origin.x, (float) designW * k, (float) getWidth()), axis (origin.y, (float) designH * k, (float) getHeight()) };
 }
 
 void ZenEditor::applyZoom (bool sharpen)
@@ -1250,7 +1386,7 @@ void ZenEditor::applyZoom (bool sharpen)
     }
 }
 
-// Zoom so that the slab point `anchorContent` (in 0..980 units) sits under `editorPos`.
+// Zoom so that the board point `anchorContent` (in design units) sits under `editorPos`.
 void ZenEditor::zoomAround (juce::Point<float> editorPos, float newZoom, juce::Point<float> anchorContent)
 {
     zoom = juce::jlimit (1.0f, 4.0f, newZoom);
@@ -1271,9 +1407,9 @@ ZenEditor::FullWindow::FullWindow (ZenEditor& e) : ed (e)
 
 void ZenEditor::FullWindow::resized()
 {
-    const float side = (float) std::min (getWidth(), getHeight());
-    const float k = side / (float) designSize;
-    ed.content.setTransform (juce::AffineTransform::scale (k).translated (((float) getWidth() - side) * 0.5f, ((float) getHeight() - side) * 0.5f));
+    const float k = std::min ((float) getWidth() / (float) designW, (float) getHeight() / (float) designH);
+    ed.content.setTransform (juce::AffineTransform::scale (k).translated (((float) getWidth() - (float) designW * k) * 0.5f,
+                                                                          ((float) getHeight() - (float) designH * k) * 0.5f));
     float physical = 1.0f;
     if (auto* disp = juce::Desktop::getInstance().getDisplays().getDisplayForRect (getScreenBounds())) physical = (float) disp->scale;
     ed.content.setRenderScale (k * std::max (1.0f, physical));
@@ -1300,25 +1436,22 @@ void ZenEditor::setFullscreen (bool on)
         full = std::make_unique<FullWindow> (*this);
         full->setBounds (disp->logicalBounds.toNearestInt());
         full->addAndMakeVisible (content);            // moves the slab out of the plugin window
-        content.setBounds (0, 0, designSize, designSize);
+        content.setBounds (0, 0, designW, designH);
         full->resized();
         full->setName ("Zenthesizer");
         full->addToDesktop (juce::ComponentPeer::windowAppearsOnTaskbar);
         full->setVisible (true);
         full->toFront (true);
         full->grabKeyboardFocus();
-        fullBtn.setVisible (false);
         returnBtn.setVisible (true);
     }
     else
     {
         addAndMakeVisible (content);                  // back into the plugin window
-        content.setBounds (0, 0, designSize, designSize);
+        content.setBounds (0, 0, designW, designH);
         full.reset();
-        fullBtn.setVisible (true);
         returnBtn.setVisible (false);
         resized();
-        fullBtn.toFront (false);
     }
     repaint();
 }

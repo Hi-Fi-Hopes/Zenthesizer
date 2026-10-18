@@ -1,6 +1,6 @@
 # Zenthesizer
 
-An organic, ethereal VST3 synth for Ableton Live, laid out on a cross-cut tree slab.
+An organic, ethereal VST3 synth for Ableton Live (and an Android app), laid out on a long live-edge board.
 Built with JUCE. GitHub builds the Windows `.vst3` on every push to `main`.
 
 ## Sound
@@ -20,26 +20,44 @@ Built with JUCE. GitHub builds the Windows `.vst3` on every push to `main`.
   look-ahead limiter (ceiling -1 dBFS, 1.5 ms) instead of a clipper, so dense chords, pads and
   stacked loops stay undistorted. Grit comes only from DRIVE (the filter input) when you ask for it.
 
-## Pages
+## The board
+
+Landscape, the same in Ableton and the app (the app is locked to landscape). Everything curves
+around the porthole in the middle:
+
+- **Left:** the PITCH strip, the seven **chord** buttons, and the chord style buttons beside them.
+- **Middle:** the page tabs and the current page (the synth controls, MOD, WAVES, BEAT, FX, PLAY,
+  STAGE), then **the keys** along the bottom: an octave and a half, C3 to F4, black keys a row up.
+- **Right:** the visuals switch and the **timbre plates A-D**, the looper (LOOP, STOP, UNDO,
+  LOOP LVL), FULL SCREEN (Ableton), and the MOD strip. OCT - / OCT + beside the keys move them.
+- **Top right:** the preset name (click it for the menu) with PREV and NEXT.
+
 
 | Tab | What's there |
 |---|---|
-| SYNTH | the slab: engines, filter/amp ring, mod sources, the porthole |
+| SYNTH | engines, filter/amp ring, mod sources, the porthole |
 | MOD | Env 1/2, LFO 1/2, Random, key tracking, velocity, the 12 mod slots |
 | WAVES | the wavetable sandbox for Engine B's OWN table |
 | BEAT | 16-step pattern, 29 sounds, kits, synth patches on rows, grooves, tempo, swing |
 | FX | chorus, echo, shimmer reverb, air, glide, spread, volume |
-| PLAY | root, scale, octave for the note plates; arpeggiator; Launchkey pads and Learn; MPE |
+| PLAY | key and scale (for the keys and chords), keys outside the scale, octave; arpeggiator; Launchkey pads and Learn; MPE |
 | STAGE | the porthole, large, for playing |
 
-## Plates and the Launchkey
+## Keys, chords and the Launchkey
 
-- The 12 **note plates** play notes in the chosen scale. Pressure (poly aftertouch) opens the filter.
+- **The keys** are chromatic, like a piano: C3 (middle C, Ableton's naming) to F4. Pressure (poly
+  aftertouch, or dragging up while you hold one) opens the filter. OCT - / OCT + shift them.
+- **The scale** (PLAY page) decides which keys are in the key. Keys outside it are dimmed and, as you
+  choose: still play (DIM), stay silent (MUTE), or play the nearest note in the scale (SNAP).
+- **The chords** (left) are the seven chords of the key and scale on the PLAY page, labelled with
+  their Roman numeral and name. Five-note scales borrow their seven-note parent (minor pentatonic
+  gives the minor chords). Chord style: 7TH and 9TH add those notes, SUS swaps the 3rd for a 2nd
+  (or a 4th), SPREAD opens the voicing out for pads, STRUM plays the notes low to high (SPEED).
+  Chords go through the arp when it's on, and the looper records them like anything else.
 - The 4 **timbre plates** (A-D) are modulation sources. Their pressure moves whatever they're assigned to
   (default: A bloom, B morph, C echoes, D space).
-- By default pad notes C1-B1 (36-47) play plates 1-12 and C2-D#2 (48-51) play A-D.
-  If your pads send other notes: PLAY tab, LEARN, click a plate, hit a pad.
-- You can also click the plates; drag up while holding for more pressure.
+- By default the Launchkey's pads C1-B1 (36-47) play the first 12 keys and C2-D#2 (48-51) play A-D.
+  If your pads send other notes: PLAY tab, LEARN, click a key or plate, hit a pad.
 
 ## Presets
 
