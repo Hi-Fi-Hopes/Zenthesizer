@@ -1,4 +1,6 @@
 #include <typeinfo>
+#include <thread>
+#include <ctime>
 #include <dlfcn.h>
 // Developer tool: plays a few notes, then renders each page of the editor to /tmp/zen_*.png.
 #include "PluginProcessor.h"
@@ -383,6 +385,47 @@ int main()
         juce::FileOutputStream os (f); juce::PNGImageFormat().writeImageToStream (img, os);
         std::printf ("wrote %s\n", f.getFullPathName().toRawUTF8());
         m.setLookAndFeel (nullptr);
+        return 0;
+    }
+
+    if (std::getenv ("ZEN_PERF"))
+    {
+        // UI cost on a tablet-sized window: CPU time of the message thread over a few seconds,
+        // with the synth playing (audio rendered on another thread, as a device would)
+        ed->setSize (1920, 1200);
+        ed->addToDesktop (0); ed->setVisible (true);
+        std::atomic<bool> run { true };
+        std::thread audio ([&]
+        {
+            juce::AudioBuffer<float> ab (2, 256);
+            int blk = 0;
+            while (run)
+            {
+                juce::MidiBuffer midi;
+                if (blk % 400 == 0) { midi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0); midi.addEvent (juce::MidiMessage::noteOn (1, 64, (juce::uint8) 100), 0); }
+                if (blk % 400 == 300) { midi.addEvent (juce::MidiMessage::noteOff (1, 60), 0); midi.addEvent (juce::MidiMessage::noteOff (1, 64), 0); }
+                proc.processBlock (ab, midi); ++blk;
+                std::this_thread::sleep_for (std::chrono::microseconds (5300));
+            }
+        });
+        auto measure = [&] (const char* what, int page, int vis)
+        {
+            zen->getContent().showPage (page);
+            proc.visualsMode.store (vis);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (1000);
+            struct timespec a, b; clock_gettime (CLOCK_THREAD_CPUTIME_ID, &a);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (4000);
+            clock_gettime (CLOCK_THREAD_CPUTIME_ID, &b);
+            const double cpu = (double) (b.tv_sec - a.tv_sec) + (double) (b.tv_nsec - a.tv_nsec) * 1e-9;
+            std::printf ("%-28s UI thread %5.1f%% of a core\n", what, cpu / 4.0 * 100.0);
+        };
+        if (juce::String (std::getenv ("ZEN_PERF")) == "long") { measure ("SYNTH, visuals OFF (long)", 0, 0); juce::MessageManager::getInstance()->runDispatchLoopUntil (40000); run = false; audio.join(); return 0; }
+        measure ("SYNTH, visuals FULL", 0, 2);
+        measure ("SYNTH, visuals LOW", 0, 1);
+        measure ("SYNTH, visuals OFF", 0, 0);
+        measure ("STAGE, visuals FULL", 6, 2);
+        measure ("BEAT, visuals FULL", 3, 2);
+        run = false; audio.join();
         return 0;
     }
 

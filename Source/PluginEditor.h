@@ -9,6 +9,9 @@
 #include "ui/BeatPanel.h"
 #include <map>
 #include <set>
+#if JUCE_ANDROID || JUCE_IOS
+ #include <juce_opengl/juce_opengl.h>
+#endif
 
 //==============================================================================
 // Engine A or B: a carved outline, a little glass screen, four selector buttons and four knobs.
@@ -28,7 +31,7 @@ public:
 private:
     ZenProcessor& proc;
     bool isB;
-    float phase = 0.0f;
+    float phase = 0.0f, lastDrawnKey = -1.0f;
     juce::Rectangle<float> screen;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> attachments;
     void paintScreenA (juce::Graphics&, juce::Rectangle<float>);
@@ -212,6 +215,9 @@ private:
 
    #if JUCE_ANDROID || JUCE_IOS
     SteelButton midiBtn { "BLUETOOTH", 26.0f }, audioBtn { "AUDIO", 26.0f }, fitBtn { "FIT", 26.0f };
+    juce::OpenGLContext openGL;                    // draw with the GPU: the software renderer is too slow on tablets
+    std::unique_ptr<juce::Component> audioPanel;   // the audio settings, inside the app (with a DONE button)
+    void toggleAudioPanel();
 
     // Pinch, drag and double-tap on bare wood (listens to every touch on screen).
     struct Gestures : public juce::MouseListener

@@ -76,7 +76,16 @@ void EngineBox::tick (float dt, bool animate)
     const int sel = (int) std::lround (proc.apvts.getRawParameterValue (isB ? ids::bTable : ids::aWave)->load());
     for (int i = 0; i < (int) selectors.size(); ++i)
         if (selectors[(size_t) i]->getToggleState() != (i == sel)) selectors[(size_t) i]->setToggleState (i == sel, juce::dontSendNotification);
-    repaint (screen.toNearestInt().expanded (6));
+    // redraw the little screen only when something on it moves (each redraw costs, on a tablet especially)
+    const zen::Dst d = isB ? zen::Dst::bPos : zen::Dst::aShape;
+    float v = proc.apvts.getRawParameterValue (isB ? ids::bPos : ids::aShape)->load();
+    if (const float live = proc.display().dstNorm[(int) d].load(); live >= 0.0f) v = live;
+    const float key = (float) sel * 10.0f + std::round (v * 400.0f) / 400.0f;
+    if (animate || key != lastDrawnKey)
+    {
+        lastDrawnKey = key;
+        repaint (screen.toNearestInt().expanded (6));
+    }
 }
 
 void EngineBox::mouseDown (const juce::MouseEvent& e)
@@ -620,7 +629,11 @@ Content::Content (ZenProcessor& p)
     updateKeyLabels();
     setSize (W, H);
     lastTick = juce::Time::getMillisecondCounterHiRes();
+   #if JUCE_ANDROID || JUCE_IOS
+    startTimerHz (30);   // plenty for the animations, and half the drawing on a tablet
+   #else
     startTimerHz (60);
+   #endif
 }
 
 Content::~Content()
@@ -1231,16 +1244,17 @@ void Content::timerCallback()
         if (vis > 0 && lowFrame) chordPlates[(size_t) i]->tick (dt * (vis == 2 ? 1.0f : 2.0f));
     }
 
-    if (page == synth)
+    // the mod sources' lights follow them (not at all with VISUALS OFF, at half rate with LOW)
+    if (page == synth && (vis == 2 || (vis == 1 && frame % 2 == 0) || armedSrc != 0))
         for (int i = 0; i < numModButtons; ++i)
         {
             const int src = srcForButton (i);
-            float v = std::abs (d.src[(size_t) src].load());
+            float v = vis == 0 ? 0.0f : std::abs (d.src[(size_t) src].load());
             if (armedSrc == src) v = 0.65f + 0.35f * std::sin ((float) now * 0.008f);
             modButtons[(size_t) i]->setLedLevel (v);
         }
 
-    if (frame % 3 == 0) updateModRings();
+    if (frame % (vis == 0 ? 6 : 3) == 0) updateModRings();
 
     // pad learn
     if (learning && learnPlate >= 0)
@@ -1288,17 +1302,16 @@ ZenEditor::ZenEditor (ZenProcessor& p) : AudioProcessorEditor (p), content (p)
         if (juce::BluetoothMidiDevicePairingDialogue::isAvailable())
             juce::BluetoothMidiDevicePairingDialogue::open();
     };
-    audioBtn.onClick = []
-    {
-        if (auto* holder = juce::StandalonePluginHolder::getInstance())
-            holder->showAudioSettingsDialog();
-    };
+    audioBtn.onClick = [this] { toggleAudioPanel(); };
     fitBtn.showLed = false;
     fitBtn.labelColour = theme::bone;
     addChildComponent (fitBtn);
     fitBtn.onClick = [this] { zoom = 1.0f; applyZoom (true); };
     juce::Desktop::getInstance().addGlobalMouseListener (&gestures);
-    content.showHint ("two fingers on the wood to zoom  -  double-tap the wood to zoom in  -  FIT zooms out");
+    openGL.setComponentPaintingEnabled (true);
+    openGL.setContinuousRepainting (false);
+    openGL.attachTo (*this);
+    content.showHint ("pinch the wood with two fingers to zoom  -  FIT zooms back out");
    #else
     constrainer.setFixedAspectRatio ((double) designW / (double) designH);
     constrainer.setSizeLimits (800, 500, 3200, 2000);
@@ -1325,6 +1338,7 @@ void ZenEditor::paint (juce::Graphics& g)
 ZenEditor::~ZenEditor()
 {
    #if JUCE_ANDROID || JUCE_IOS
+    openGL.detach();
     juce::Desktop::getInstance().removeGlobalMouseListener (&gestures);
     WoodTouch::fingersOnWood = 0;
    #endif
@@ -1352,6 +1366,8 @@ void ZenEditor::resized()
     audioBtn.setBounds (getWidth() - 6 - bw, 6, bw, bh);
     fitBtn.dome = 26.0f * bs;
     fitBtn.setBounds (6, getHeight() - 6 - bh, bw, bh);
+    if (audioPanel != nullptr)
+        audioPanel->setBounds (getLocalBounds().withSizeKeepingCentre (std::min (getWidth() - 40, 720), std::min (getHeight() - 40, 560)));
    #endif
     applyZoom (true);
 }
@@ -1382,7 +1398,11 @@ void ZenEditor::applyZoom (bool sharpen)
     {
         float physical = 1.0f;
         if (auto* disp = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()) physical = (float) disp->scale;
+       #if JUCE_ANDROID || JUCE_IOS
+        content.setRenderScale (baseScale * std::max (1.0f, physical));   // zooming in stays light: the wood isn't re-rendered
+       #else
         content.setRenderScale (k * std::max (1.0f, physical));
+       #endif
     }
 }
 
@@ -1458,6 +1478,78 @@ void ZenEditor::setFullscreen (bool on)
 #endif
 
 #if JUCE_ANDROID || JUCE_IOS
+// The app's audio settings, drawn inside the app with a big DONE button (the stock dialog can get
+// stuck open on some tablets in landscape).
+namespace
+{
+    // dark, readable, and its menus open inside the app
+    struct PanelLookAndFeel : public juce::LookAndFeel_V4
+    {
+        PanelLookAndFeel() : juce::LookAndFeel_V4 (juce::LookAndFeel_V4::getMidnightColourScheme()) {}
+        juce::Component* getParentComponentForMenuOptions (const juce::PopupMenu::Options& o) override
+        {
+            if (auto* p = o.getParentComponent()) return p;
+            if (auto* t = o.getTargetComponent()) return t->getTopLevelComponent();
+            return nullptr;
+        }
+        bool shouldPopupMenuScaleWithTargetComponent (const juce::PopupMenu::Options&) override { return false; }
+        void getIdealPopupMenuItemSize (const juce::String& text, bool sep, int stdH, int& w, int& h) override
+        {
+            LookAndFeel_V4::getIdealPopupMenuItemSize (text, sep, stdH, w, h);
+            if (! sep) h = std::max (h, 40);
+        }
+    };
+
+    struct AudioPanel : public juce::Component
+    {
+        AudioPanel (juce::AudioDeviceManager& dm, std::function<void()> close)
+            : selector (dm, 0, 0, 1, 2, true, false, true, false)
+        {
+            setLookAndFeel (&lnf);
+            addAndMakeVisible (selector);
+            done.showLed = false;
+            done.labelColour = theme::bone;
+            done.onClick = std::move (close);
+            addAndMakeVisible (done);
+        }
+        void paint (juce::Graphics& g) override
+        {
+            g.setColour (juce::Colour (0xf01a1009));
+            g.fillRoundedRectangle (getLocalBounds().toFloat(), 18.0f);
+            g.setColour (theme::brass.withAlpha (0.6f));
+            g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (1.0f), 18.0f, 2.0f);
+            theme::burnText (g, "AUDIO AND MIDI", { 0.0f, 14.0f, (float) getWidth(), 20.0f }, juce::Justification::centred,
+                             theme::font (theme::FontKind::sansBold, 15.0f, 0.2f), theme::bone);
+        }
+        void resized() override
+        {
+            auto r = getLocalBounds().reduced (18);
+            r.removeFromTop (28);
+            done.setBounds (r.removeFromBottom (70).withSizeKeepingCentre (110, 66));
+            selector.setBounds (r);
+        }
+        ~AudioPanel() override { setLookAndFeel (nullptr); }
+        PanelLookAndFeel lnf;
+        juce::AudioDeviceSelectorComponent selector;
+        SteelButton done { "DONE", 28.0f };
+    };
+}
+
+void ZenEditor::toggleAudioPanel()
+{
+    if (audioPanel != nullptr) { audioPanel.reset(); return; }
+    auto* holder = juce::StandalonePluginHolder::getInstance();
+    if (holder == nullptr) return;
+    audioPanel = std::make_unique<AudioPanel> (holder->deviceManager, [safe = juce::Component::SafePointer<ZenEditor> (this)]
+    {
+        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) { safe->audioPanel.reset(); safe->repaint(); } });
+    });
+    audioPanel->setColour (juce::ResizableWindow::backgroundColourId, juce::Colours::transparentBlack);
+    addAndMakeVisible (*audioPanel);
+    audioPanel->setBounds (getLocalBounds().withSizeKeepingCentre (std::min (getWidth() - 40, 720), std::min (getHeight() - 40, 560)));
+    audioPanel->toFront (true);
+}
+
 // Zoom only ever comes from bare wood: two fingers on the wood pinch, one finger on the wood
 // drags (when zoomed), two quick taps on the wood zoom in. Touches on plates, knobs and buttons
 // never zoom, and FIT (bottom left) zooms back out.
@@ -1527,11 +1619,7 @@ void ZenEditor::Gestures::mouseDrag (const juce::MouseEvent& e)
         ed.zoomAround ((a + b) * 0.5f, startZoom * d / startDist, anchor);
         ed.applyZoom (false);
     }
-    else if (! pinching && ! pinchPending && wood.size() == 1 && ed.zoom > 1.01f)
-    {
-        ed.origin = panStartOrigin + (pos - panStartPos);
-        ed.applyZoom (false);
-    }
+    // (one finger on the wood does nothing: only a two-finger pinch zooms and moves the board)
 }
 
 void ZenEditor::Gestures::mouseUp (const juce::MouseEvent& e)
@@ -1548,33 +1636,14 @@ void ZenEditor::Gestures::mouseUp (const juce::MouseEvent& e)
         const bool didZoom = pinching;
         pinching = pinchPending = false;
         WoodTouch::fingersOnWood = 0;
-        if (! wood.empty()) beginPan (*wood.begin());   // keep dragging with the finger that's left
-        if (didZoom) ed.applyZoom (true);               // re-render the wood sharp for this zoom
+        if (didZoom)
+        {
+            if (ed.zoom < 1.12f) ed.zoom = 1.0f;        // nearly back to the whole board: snap to it
+            ed.applyZoom (true);
+        }
         return;
     }
 
-    // a quick, still tap on the wood; two of them in a row zoom in (never out: that's FIT)
-    if (wasWood && wood.empty() && ! moved)
-    {
-        const auto now = juce::Time::getMillisecondCounter();
-        if (now - downTime[idx] < 250)
-        {
-            if (lastTap != 0 && now - lastTap < 350 && pos.getDistanceFrom (lastTapPos) < 60.0f)
-            {
-                if (ed.zoom < 1.5f)
-                {
-                    ed.zoomAround (pos, 2.5f, (pos - ed.origin) / (ed.baseScale * ed.zoom));
-                    ed.applyZoom (true);
-                }
-                lastTap = 0;
-            }
-            else
-            {
-                lastTap = now;
-                lastTapPos = pos;
-            }
-        }
-    }
-    if (wasWood && moved && wood.empty() && ed.zoom > 1.01f) ed.applyZoom (true);
+    juce::ignoreUnused (wasWood, pos);
 }
 #endif

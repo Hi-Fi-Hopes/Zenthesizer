@@ -122,7 +122,7 @@ public:
     }
     void setLive (float v)
     {
-        if (std::abs (v - live) > 0.002f) { live = v; if (! arcs.empty()) repaint(); }
+        if (std::abs (v - live) > 0.008f) { live = v; if (! arcs.empty()) repaint(); }   // (each redraw costs on a tablet)
     }
 
     juce::Point<float> knobCentre() const
@@ -265,7 +265,7 @@ public:
     float ledLevel = -1.0f;        // >= 0: light follows this (0..1) instead of the toggle state
     bool labelAbove = false;
 
-    void setLedLevel (float v) { if (std::abs (v - ledLevel) > 0.01f) { ledLevel = v; repaint(); } }
+    void setLedLevel (float v) { if (std::abs (v - ledLevel) > 0.03f || (v == 0.0f && ledLevel != 0.0f)) { ledLevel = v; repaint(); } }
 
     void paintButton (juce::Graphics& g, bool over, bool down) override
     {
