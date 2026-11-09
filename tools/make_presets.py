@@ -26,6 +26,8 @@ STRINGS = "Strings"; BRASS = "Brass & Horns"; ASIA = "World/Asia"; INDIA = "Worl
 AFRICA = "World/Africa"; EUROPE = "World/Europe & Celtic"; AMERICAS = "World/Americas & Islands"
 ATMOS = "Atmospheres"; LOFI = "Lo-Fi"; CHOIR = "Choirs & Voices"; MALLET = "Mallets"; DRONE = "Drones & Bass"
 ARP = "Arps & Motion"; MPE = "MPE Expressive"; CINE = "Cinematic"
+MPE_DRONE = "MPE Ambient/Drones"; MPE_PAD = "MPE Ambient/Pads & Atmospheres"
+MPE_KEYS = "MPE Ambient/Keys & Bells"; MPE_LEAD = "MPE Ambient/Dreamy Leads"
 
 presets = [
     #============================================================== STRINGS
@@ -420,6 +422,113 @@ presets = [
       aWave=SAW, aTune=0.25, aDetune=0.9, aLevel=0.4, bTable=GLASS, bPos=0.9, bWarp=0.6, bUnison=1.0, bLevel=0.55,
       cutoff=0.4, res=0.5, drive=0.3, ampA=0.88, ampS=1.0, ampR=0.9, randRate=0.4, randSmooth=0.9, lfo1Rate=0.12,
       reverbSize=1.0, reverbDecay=0.95, reverbShimmer=0.2, reverbMix=0.65),
+
+    #============================================================== MPE AMBIENT (made for the K-Board)
+    # Every note rests quieter and darker; pressure swells it and opens it up, and where the finger sits
+    # on the key (slide) picks the colour. Drones and pads to loop, keys and leads to play over them.
+
+    # -- drones: long, slow, and they keep moving on their own
+    P("Breathing Monolith", MPE_DRONE, [("press","amp",0.6),("press","bPos",0.25),("slide","cutoff",0.3),("lfo1","bPos",0.18),("rand","pan",0.3)],
+      aWave=SAW, aTune=0.25, aDetune=0.45, aShape=0.3, aLevel=0.45, bTable=VOX, bPos=0.75, bUnison=0.6, bLevel=0.6,
+      cutoff=0.44, res=0.25, ampA=0.82, ampS=0.65, ampR=0.9, lfo1Rate=0.18, lfo1Shape=4, randRate=0.3, randSmooth=0.9,
+      reverbSize=1.0, reverbDecay=0.92, reverbMix=0.55),
+    P("Fifth Engine", MPE_DRONE, [("press","aLevel",0.55),("press","amp",0.4),("slide","bPos",0.4),("lfo1","cutoff",0.08)],
+      aWave=SAW, aTune=0.6458, aDetune=0.2, aShape=0.4, aLevel=0.05, bTable=REED, bPos=0.3, bUnison=0.5, bLevel=0.7,
+      cutoff=0.48, res=0.2, ampA=0.78, ampS=0.7, ampR=0.88, lfo1Rate=0.2, lfo1Shape=4, chorusMix=0.35,
+      reverbSize=0.9, reverbDecay=0.85, reverbMix=0.5),
+    P("Cathedral Hum", MPE_DRONE, [("press","amp",0.5),("press","bUnison",0.3),("slide","bPos",0.5),("lfo1","bPos",0.12)],
+      aWave=SIN, aTune=0.25, aLevel=0.4, bTable=VOX, bPos=0.6, bUnison=0.5, bLevel=0.75, cutoff=0.5,
+      ampA=0.86, ampS=0.7, ampR=0.92, lfo1Rate=0.12, lfo1Shape=4,
+      reverbSize=1.0, reverbDecay=0.95, reverbShimmer=0.45, reverbMix=0.62),
+    P("Low Tide", MPE_DRONE, [("press","drive",0.35),("press","cutoff",0.2),("slide","res",0.35),("lfo2","cutoff",0.1)],
+      aWave=SAW, aTune=0.25, aDetune=0.3, aShape=0.2, aLevel=0.7, bTable=AIR, bPos=0.2, bLevel=0.3,
+      cutoff=0.36, res=0.3, drive=0.1, ampA=0.8, ampS=0.85, ampR=0.88, lfo2Rate=0.15, lfo2Shape=4,
+      reverbSize=0.9, reverbDecay=0.85, reverbDamp=0.6, reverbMix=0.5),
+    P("Copper Wind", MPE_DRONE, [("press","cutoff",0.3),("press","air",0.3),("press","amp",0.45),("slide","res",0.25),("rand","cutoff",0.08)],
+      aWave=TRI, aTune=0.25, aLevel=0.25, bTable=AIR, bPos=0.7, bLevel=0.3, air=0.55, cutoff=0.4, res=0.55,
+      ampA=0.84, ampS=0.9, ampR=0.9, randRate=0.35, randSmooth=0.95,
+      reverbSize=1.0, reverbDecay=0.9, reverbMix=0.6),
+    P("Reed Organ Drone", MPE_DRONE, [("press","amp",0.5),("press","air",0.15),("slide","bPos",0.35),("lfo1","amp",-0.1)],
+      aWave=SQR, aShape=0.45, aDetune=0.25, aLevel=0.35, bTable=REED, bPos=0.25, bUnison=0.4, bLevel=0.65, air=0.08,
+      cutoff=0.52, ampA=0.7, ampS=0.7, ampR=0.8, lfo1Rate=0.32, chorusMix=0.3,
+      reverbSize=0.8, reverbDecay=0.8, reverbMix=0.45),
+
+    # -- pads and atmospheres
+    P("Velvet Fog", MPE_PAD, [("press","amp",0.55),("press","cutoff",0.25),("slide","bPos",0.5),("lfo1","pitch",0.004)],
+      aWave=SAW, aDetune=0.5, aShape=0.15, aLevel=0.55, bTable=AIR, bPos=0.4, bUnison=0.7, bLevel=0.45,
+      cutoff=0.45, res=0.15, ampA=0.72, ampS=0.65, ampR=0.85, lfo1Rate=0.78, chorusMix=0.5, chorusDepth=0.6,
+      reverbSize=0.9, reverbDecay=0.85, reverbMix=0.5),
+    P("Glass Aurora", MPE_PAD, [("slide","bPos",0.6),("press","bWarp",0.3),("press","amp",0.3),("lfo1","bPos",0.1)],
+      aLevel=0.0, bTable=GLASS, bPos=0.25, bUnison=0.75, bLevel=0.75, cutoff=0.68,
+      ampA=0.7, ampS=0.65, ampR=0.88, lfo1Rate=0.22,
+      reverbSize=1.0, reverbDecay=0.9, reverbShimmer=0.5, reverbMix=0.6),
+    P("Choir in the Pines", MPE_PAD, [("slide","bPos",0.9),("press","amp",0.55),("press","cutoff",0.2),("lfo1","pitch",0.004)],
+      aWave=SIN, aLevel=0.2, bTable=VOX, bPos=0.05, bUnison=0.7, bLevel=0.8, cutoff=0.6,
+      ampA=0.72, ampS=0.65, ampR=0.85, lfo1Rate=0.8,
+      reverbSize=1.0, reverbDecay=0.88, reverbMix=0.55),
+    P("Tape Halo", MPE_PAD, [("press","amp",0.5),("press","cutoff",0.25),("slide","aShape",0.4),("lfo2","pitch",0.016)],
+      aWave=SAW, aDetune=0.45, aShape=0.55, aLevel=0.6, bTable=AIR, bPos=0.6, bLevel=0.35, cutoff=0.44, drive=0.2,
+      ampA=0.7, ampS=0.65, ampR=0.8, lfo2Rate=0.4, lfo2Shape=4, chorusMix=0.55,
+      delaySync=5, delayFeedback=0.4, delayTone=0.3, delayMix=0.18, reverbSize=0.75, reverbMix=0.42),
+    P("Northern Swell", MPE_PAD, [("env2","cutoff",0.3),("press","amp",0.5),("slide","aShape",0.45),("press","bPos",0.3)],
+      aWave=SAW, aDetune=0.4, aShape=0.1, aLevel=0.55, bTable=REED, bPos=0.2, bUnison=0.6, bLevel=0.4,
+      cutoff=0.38, res=0.2, e2A=0.88, e2D=0.9, e2S=1.0, ampA=0.8, ampS=0.65, ampR=0.88, chorusMix=0.4,
+      reverbSize=0.95, reverbDecay=0.9, reverbMix=0.55),
+    P("Static Bloom", MPE_PAD, [("press","air",0.35),("press","amp",0.45),("slide","bPos",0.5),("rand","bWarp",0.3)],
+      aWave=SIN, aLevel=0.25, bTable=GLASS, bPos=0.5, bUnison=0.5, bLevel=0.6, air=0.25, cutoff=0.62, res=0.2,
+      ampA=0.75, ampS=0.65, ampR=0.88, randRate=0.45, randSmooth=0.9,
+      delaySync=4, delayFeedback=0.45, delayTone=0.35, delayMix=0.15, reverbSize=1.0, reverbShimmer=0.3, reverbMix=0.6),
+
+    # -- keys: they ring down by themselves; leaning on the key holds them up and brightens them
+    P("Felt Dream Piano", MPE_KEYS, [("press","amp",0.6),("press","cutoff",0.2),("slide","cutoff",0.2),("lfo2","pitch",0.008)],
+      aWave=TRI, aShape=0.35, aLevel=0.75, bTable=GLASS, bPos=0.1, bLevel=0.15, cutoff=0.48, res=0.05,
+      envAmt=0.6, e1A=0.0, e1D=0.65, e1S=0.2, ampA=0.02, ampD=0.78, ampS=0.3, ampR=0.6, lfo2Rate=0.35, lfo2Shape=4,
+      velSens=0.5, chorusMix=0.25, reverbSize=0.6, reverbDecay=0.65, reverbMix=0.35),
+    P("Cassette Rhodes", MPE_KEYS, [("vel","aShape",0.35),("press","amp",0.5),("slide","pan",0.45),("lfo2","pitch",0.012)],
+      aWave=SIN, aShape=0.3, aLevel=0.75, bTable=GLASS, bPos=0.05, bLevel=0.2, cutoff=0.58, drive=0.25,
+      ampA=0.0, ampD=0.8, ampS=0.3, ampR=0.6, lfo2Rate=0.4, lfo2Shape=4, chorusMix=0.4, chorusRate=0.3,
+      reverbSize=0.5, reverbMix=0.28),
+    P("Bell Garden", MPE_KEYS, [("press","bPos",0.35),("press","amp",0.4),("slide","aShape",0.3)],
+      aWave=SIN, aTune=0.75, aShape=0.2, aLevel=0.35, bTable=GLASS, bPos=0.7, bLevel=0.65, cutoff=0.88,
+      ampA=0.0, ampD=0.85, ampS=0.1, ampR=0.85, velSens=0.5,
+      delaySync=5, delayFeedback=0.45, delayMix=0.22, reverbSize=0.9, reverbDecay=0.85, reverbShimmer=0.3, reverbMix=0.5),
+    P("Glass Celeste", MPE_KEYS, [("press","amp",0.45),("press","bPos",0.2),("slide","cutoff",0.25)],
+      aWave=SIN, aTune=0.75, aLevel=0.4, bTable=GLASS, bPos=0.35, bLevel=0.55, cutoff=0.8,
+      ampA=0.0, ampD=0.74, ampS=0.12, ampR=0.68, velSens=0.5,
+      delaySync=3, delayFeedback=0.4, delayMix=0.2, reverbSize=0.7, reverbMix=0.4),
+    P("Kalimba Drift", MPE_KEYS, [("env1","air",0.2),("press","amp",0.5),("slide","aShape",0.25),("lfo2","pitch",0.008)],
+      aWave=SIN, aShape=0.25, aLevel=0.6, bTable=GLASS, bPos=0.15, bLevel=0.3, cutoff=0.8, envAmt=0.6,
+      e1A=0.0, e1D=0.5, e1S=0.0, ampA=0.0, ampD=0.74, ampS=0.08, ampR=0.72, lfo2Rate=0.35, lfo2Shape=4,
+      delaySync=3, delayFeedback=0.35, delayMix=0.18, reverbSize=0.7, reverbMix=0.4),
+    P("Toy Piano Haze", MPE_KEYS, [("press","amp",0.45),("slide","aShape",0.35),("lfo2","pitch",0.014)],
+      aWave=SQR, aTune=0.75, aShape=0.3, aLevel=0.45, bTable=GLASS, bPos=0.55, bLevel=0.3, cutoff=0.62, drive=0.2,
+      ampA=0.0, ampD=0.68, ampS=0.1, ampR=0.6, lfo2Rate=0.45, lfo2Shape=4, chorusMix=0.45,
+      delaySync=2, delayFeedback=0.3, delayMix=0.15, reverbSize=0.65, reverbMix=0.38),
+
+    # -- dreamy leads: one finger, lots of expression
+    P("Firefly Whistle", MPE_LEAD, [("press","amp",0.7),("press","air",0.3),("slide","cutoff",0.3),("lfo1","pitch",0.006)],
+      aWave=SIN, aLevel=0.6, bTable=AIR, bPos=0.1, bLevel=0.3, air=0.15, cutoff=0.62,
+      ampA=0.35, ampS=0.5, ampR=0.6, glide=0.15, lfo1Rate=0.8,
+      delaySync=5, delayFeedback=0.45, delayMix=0.25, reverbSize=0.85, reverbMix=0.45),
+    P("Moonlight Ocarina", MPE_LEAD, [("press","amp",0.7),("slide","bPos",0.5),("press","cutoff",0.2),("lfo1","pitch",0.005)],
+      aWave=TRI, aShape=0.1, aLevel=0.5, bTable=VOX, bPos=0.75, bLevel=0.45, air=0.08, cutoff=0.6,
+      ampA=0.32, ampS=0.5, ampR=0.55, glide=0.1, lfo1Rate=0.8,
+      delaySync=4, delayFeedback=0.35, delayMix=0.2, reverbSize=0.8, reverbMix=0.42),
+    P("Glass Flute", MPE_LEAD, [("press","amp",0.7),("press","air",0.45),("slide","bPos",0.4),("lfo1","pitch",0.005)],
+      aWave=SIN, aLevel=0.45, bTable=AIR, bPos=0.15, bLevel=0.4, air=0.3, cutoff=0.62, res=0.1,
+      ampA=0.35, ampS=0.5, ampR=0.55, lfo1Rate=0.82,
+      delaySync=3, delayFeedback=0.35, delayMix=0.2, reverbSize=0.8, reverbShimmer=0.2, reverbMix=0.45),
+    P("Dream Saw Lead", MPE_LEAD, [("press","cutoff",0.4),("press","amp",0.5),("slide","res",0.35),("lfo1","pitch",0.004)],
+      aWave=SAW, aDetune=0.2, aLevel=0.6, bTable=AIR, bPos=0.5, bLevel=0.25, cutoff=0.4, res=0.25, drive=0.1,
+      ampA=0.25, ampS=0.6, ampR=0.55, glide=0.12, lfo1Rate=0.8, chorusMix=0.3,
+      delaySync=5, delayFeedback=0.5, delayTone=0.35, delayMix=0.28, reverbSize=0.85, reverbMix=0.45),
+    P("Silk Erhu", MPE_LEAD, [("press","amp",0.75),("press","cutoff",0.3),("slide","aShape",0.4),("lfo1","pitch",0.012)],
+      aWave=SAW, aDetune=0.03, aShape=0.3, aLevel=0.75, bTable=VOX, bPos=0.55, bLevel=0.25, cutoff=0.5, res=0.25,
+      ampA=0.38, ampS=0.5, ampR=0.55, glide=0.2, lfo1Rate=0.82,
+      reverbSize=0.75, reverbDecay=0.7, reverbMix=0.38),
+    P("Starlight Pluck", MPE_LEAD, [("slide","aShape",0.3),("press","cutoff",0.25),("press","amp",0.3)],
+      **string(0.4, det=0.05, ring=0.84, rel=0.75, cutoff=0.78,
+      delaySync=3, delayFeedback=0.5, delayTone=0.4, delayMix=0.3, reverbSize=0.85, reverbShimmer=0.25, reverbMix=0.48)),
 ]
 
 # Optional per-preset volume trims, filled in after checking levels (name -> volume knob value).

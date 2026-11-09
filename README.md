@@ -61,10 +61,10 @@ around the porthole in the middle:
 
 ## Presets
 
-204 factory presets in folders: Ethereal, Keys, Bells & Plucks, Textures & Bass, Leads, Strings,
+228 factory presets in folders: Ethereal, Keys, Bells & Plucks, Textures & Bass, Leads, Strings,
 Brass & Horns, World (Asia, India & Middle East, Africa, Europe & Celtic, Americas & Islands),
-Atmospheres, Lo-Fi, Choirs & Voices, Mallets, Drones & Bass, Arps & Motion, MPE Expressive and
-Cinematic. Click the preset name to open the menu; the arrows beside it step through them all.
+Atmospheres, Lo-Fi, Choirs & Voices, Mallets, Drones & Bass, Arps & Motion, MPE Expressive,
+Cinematic and MPE Ambient (Drones, Pads & Atmospheres, Keys & Bells, Dreamy Leads). Click the preset name to open the menu; the arrows beside it step through them all.
 The world instruments are synthesized impressions (the plucked ones use STR), not recordings.
 Several plucked presets bend up when you press harder on a pad (Koto, Guzheng, Oud, Sitar).
 
@@ -83,7 +83,9 @@ PLAY page > MPE CONTROLLER: set it to the per-note bend range your controller us
 default). Each note then gets its own pitch bend, pressure (PRESS) and slide (SLIDE, CC74, the
 up-down axis), on channels 2 to 16; channel 1 still carries the normal bend and mod wheel.
 The MPE Expressive presets are built around pressure and slide; any preset that uses PRESS reacts
-to MPE pressure. While MPE is on, Launchkey pads play plates only on the pad channel you pick, so
+to MPE pressure. The MPE Ambient presets (made with the K-Board in mind) rest quiet and dark under a
+light touch; leaning in swells and opens each note, and where the finger sits on the key picks the
+colour. Drones and pads to loop, keys and leads to play over them. While MPE is on, Launchkey pads play plates only on the pad channel you pick, so
 set that (for example ch 10) and, if your MPE controller can, keep its notes off that channel.
 Without MPE, CC74 from any controller moves SLIDE for every note.
 

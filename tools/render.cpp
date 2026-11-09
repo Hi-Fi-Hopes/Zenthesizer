@@ -34,6 +34,46 @@ int main()
         return 0;
     }
 
+    if (std::getenv ("ZEN_MPELEVELS"))
+    {
+        // the "MPE Ambient" presets played as an MPE controller would: two notes on member channels,
+        // first resting lightly, then leaned on hard, with the finger at the back and front of the key
+        juce::AudioBuffer<float> mb (2, 512);
+        for (int i = 0; i < proc.getNumPrograms(); ++i)
+        {
+            if (! juce::String (ZenProcessor::presetInfo()[(size_t) i].category).startsWith ("MPE Ambient")) continue;
+            proc.setCurrentProgram (i);
+            if (auto* mp = proc.apvts.getParameter (ids::mpe)) mp->setValueNotifyingHost (mp->convertTo0to1 (3.0f));
+            juce::String line;
+            for (int pass = 0; pass < 2; ++pass)
+            {
+                proc.prepareToPlay (48000.0, 512);
+                const int press = pass == 0 ? 10 : 127, slide = pass == 0 ? 20 : 110;
+                double sum = 0.0; float pk = 0.0f; bool finite = true;
+                for (int b = 0; b < 400; ++b)
+                {
+                    juce::MidiBuffer midi;
+                    if (b == 0)
+                        for (int ch : { 2, 3 })
+                        {
+                            midi.addEvent (juce::MidiMessage::controllerEvent (ch, 74, slide), 0);
+                            midi.addEvent (juce::MidiMessage::noteOn (ch, ch == 2 ? 57 : 64, (juce::uint8) 90), 0);
+                        }
+                    if (b % 8 == 1)
+                        for (int ch : { 2, 3 }) midi.addEvent (juce::MidiMessage::channelPressureChange (ch, press), 0);
+                    if (b == 340) { midi.addEvent (juce::MidiMessage::noteOff (2, 57), 0); midi.addEvent (juce::MidiMessage::noteOff (3, 64), 0); }
+                    proc.processBlock (mb, midi);
+                    for (int c = 0; c < 2; ++c)
+                        for (int k = 0; k < 512; ++k) { const float x = mb.getSample (c, k); if (! std::isfinite (x)) finite = false; sum += x * x; pk = std::max (pk, std::abs (x)); }
+                }
+                const float rms = (float) std::sqrt (sum / (400.0 * 1024.0));
+                line << juce::String::formatted ("   %s rms %6.1f dB peak %.2f%s", pass == 0 ? "light" : "hard ", 20.0 * std::log10 (rms + 1e-9), pk, finite ? "" : " NaN!");
+            }
+            std::printf ("  %-22s%s\n", proc.getProgramName (i).toRawUTF8(), line.toRawUTF8());
+        }
+        return 0;
+    }
+
     // every preset value must name a real parameter, and every preset must make sound
     int bad = 0;
     for (auto& pr : presets::all())
