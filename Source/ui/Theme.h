@@ -62,7 +62,7 @@ namespace theme
                           const juce::Font& f, juce::Colour c = burn)
     {
         g.setFont (f);
-        g.setColour (c.withAlpha (0.18f));
+        g.setColour (c.withMultipliedAlpha (0.18f));
         for (auto d : { juce::Point<float> (-0.7f, 0.0f), { 0.7f, 0.0f }, { 0.0f, -0.7f }, { 0.0f, 0.7f } })
             g.drawText (text, r.translated (d.x, d.y), j, false);
         g.setColour (c);

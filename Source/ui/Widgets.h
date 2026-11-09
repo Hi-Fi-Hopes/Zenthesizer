@@ -371,6 +371,10 @@ public:
         if (std::abs (l - level) > 0.005f) { level = l; repaint(); }
     }
     void triggerRipple() { ripples.push_back (0.0f); }
+    // Dimmed (keys outside the scale). Drawn faded rather than with setAlpha: a component alpha
+    // costs a whole offscreen layer on every redraw, which is too slow on a tablet.
+    void setFade (float f) { if (std::abs (f - fade) > 0.005f) { fade = f; repaint(); } }
+    float getFade() const { return fade; }
     bool tick (float dt)
     {
         if (ripples.empty()) return false;
@@ -384,12 +388,14 @@ public:
     {
         const juce::Point<float> c ((float) getWidth() * 0.5f, (float) getHeight() * 0.5f);
         const float r = dia * 0.5f;
+        const auto F = [this] (juce::Colour col) { return col.withMultipliedAlpha (fade); };
 
         // glow when sounding / pressed
         if (level > 0.01f)
         {
             juce::ColourGradient glow (juce::Colour (0xffffc86e).withAlpha (0.75f * level), c.x, c.y,
                                        juce::Colour (0x00ffc86e), c.x + r + 22.0f * level + 6.0f, c.y, true);
+            glow.multiplyOpacity (fade);
             g.setGradientFill (glow);
             const float gr = r + 22.0f * level + 6.0f;
             g.fillEllipse (c.x - gr, c.y - gr, gr * 2.0f, gr * 2.0f);
@@ -397,47 +403,48 @@ public:
         for (float age : ripples)
         {
             const float rr = r + age * dia * 0.9f;
-            g.setColour (juce::Colour (0xffffd68c).withAlpha (0.85f * (1.0f - age)));
+            g.setColour (F (juce::Colour (0xffffd68c).withAlpha (0.85f * (1.0f - age))));
             g.drawEllipse (c.x - rr, c.y - rr, rr * 2.0f, rr * 2.0f, 2.0f * (1.0f - age) + 0.5f);
         }
         if (locked)
         {
             // locked by a double-tap: a twin brass ring
-            g.setColour (theme::amber.withAlpha (0.9f));
+            g.setColour (F (theme::amber.withAlpha (0.9f)));
             g.drawEllipse (c.x - r - 9.0f, c.y - r - 9.0f, (r + 9.0f) * 2.0f, (r + 9.0f) * 2.0f, 2.0f);
             g.drawEllipse (c.x - r - 13.0f, c.y - r - 13.0f, (r + 13.0f) * 2.0f, (r + 13.0f) * 2.0f, 1.0f);
         }
         if (armed)
         {
-            g.setColour (armedColour.withAlpha (0.8f));
+            g.setColour (F (armedColour.withAlpha (0.8f)));
             g.drawEllipse (c.x - r - 7.0f, c.y - r - 7.0f, (r + 7.0f) * 2.0f, (r + 7.0f) * 2.0f, 2.0f);
         }
 
         // set into the wood
-        g.setColour (juce::Colour (0x8c281608));
+        g.setColour (F (juce::Colour (0x8c281608)));
         g.fillEllipse (c.x - r - 3.0f, c.y - r - 3.0f, (r + 3.0f) * 2.0f, (r + 3.0f) * 2.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        g.setColour (F (juce::Colours::black.withAlpha (0.45f)));
         g.fillEllipse (c.x - r, c.y - r + 3.0f, r * 2.0f, r * 2.0f);
 
         juce::ColourGradient brass (theme::brassHi, c.x - r * 0.3f, c.y - r * 0.44f, theme::brassDk, c.x + r, c.y + r, true);
         brass.addColour (0.38, theme::brass);
         brass.addColour (0.72, theme::brassLo);
+        brass.multiplyOpacity (fade);
         g.setGradientFill (brass);
         const float press = pressed ? 1.0f : 0.0f;
         g.fillEllipse (c.x - r, c.y - r + press, r * 2.0f, r * 2.0f);
         // brushed rings
-        g.setColour (juce::Colour (0x18ffffff));
+        g.setColour (F (juce::Colour (0x18ffffff)));
         for (float k = 0.25f; k < 0.95f; k += 0.12f) g.drawEllipse (c.x - r * k, c.y - r * k + press, r * 2.0f * k, r * 2.0f * k, 0.7f);
-        g.setColour (juce::Colour (0x40000000));
+        g.setColour (F (juce::Colour (0x40000000)));
         g.drawEllipse (c.x - r + 0.5f, c.y - r + 0.5f + press, r * 2.0f - 1.0f, r * 2.0f - 1.0f, 1.0f);
 
-        g.setColour (juce::Colour (0xff3a240c));
+        g.setColour (F (juce::Colour (0xff3a240c)));
         g.setFont (theme::font (theme::FontKind::sansBold, dia > 50.0f ? 15.0f : 13.0f));
         g.drawText (label, juce::Rectangle<float> (c.x - r, c.y - r + press, r * 2.0f, r * 2.0f), juce::Justification::centred, false);
 
         if (subLabel.isNotEmpty())
             theme::burnText (g, subLabel, { 0.0f, c.y + r + 5.0f, (float) getWidth(), 13.0f }, juce::Justification::centredTop,
-                             theme::font (theme::FontKind::sans, 10.0f, 0.1f));
+                             theme::font (theme::FontKind::sans, 10.0f, 0.1f), F (theme::burn));
     }
 
     bool hitTest (int x, int y) override
@@ -474,7 +481,7 @@ public:
 private:
     void timerCallback() override { stopTimer(); if (onRightClick) onRightClick(); }
 
-    float level = 0.0f, pressure = 0.0f, startY = 0.0f;
+    float level = 0.0f, pressure = 0.0f, startY = 0.0f, fade = 1.0f;
     bool pressed = false;
     std::vector<float> ripples;
 };

@@ -38,6 +38,10 @@ jobs:
           PJ=$(find pj -type f -name Projucer -perm -u+x | head -1)
           xvfb-run -a "$PJ" --resave Zenthesizer.jucer
           ls Builds/Android Builds/Android/app
+          # the window must draw in software (so only the changed parts are redrawn); stop if the manifest says otherwise
+          M=$(find Builds/Android -name AndroidManifest.xml | head -1); cat "$M"
+          grep -q 'hardwareAccelerated="false"' "$M"
+          ! grep -q 'hardwareAccelerated="true"' "$M"
 
       - name: Signing key
         run: cp android/zen.keystore ~/zen.keystore

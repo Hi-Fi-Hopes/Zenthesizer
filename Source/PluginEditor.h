@@ -9,9 +9,6 @@
 #include "ui/BeatPanel.h"
 #include <map>
 #include <set>
-#if JUCE_ANDROID || JUCE_IOS
- #include <juce_opengl/juce_opengl.h>
-#endif
 
 //==============================================================================
 // Engine A or B: a carved outline, a little glass screen, four selector buttons and four knobs.
@@ -95,6 +92,9 @@ private:
     void paintCore (juce::Graphics&);
     void layoutBoard();
     void updateKeyLabels();
+    juce::String readoutText() const;
+    juce::String arpTempoText() const;
+    juce::String lastReadout, lastPresetName, lastOctave, lastArpTempo;   // what the readouts last showed
     void timerCallback() override;
     void setupSynthPage();
     void setupKnob (WoodKnob&, const char* paramId, int dst);
@@ -215,7 +215,6 @@ private:
 
    #if JUCE_ANDROID || JUCE_IOS
     SteelButton midiBtn { "BLUETOOTH", 26.0f }, audioBtn { "AUDIO", 26.0f }, fitBtn { "FIT", 26.0f };
-    juce::OpenGLContext openGL;                    // draw with the GPU: the software renderer is too slow on tablets
     std::unique_ptr<juce::Component> audioPanel;   // the audio settings, inside the app (with a DONE button)
     void toggleAudioPanel();
 

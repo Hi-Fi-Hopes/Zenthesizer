@@ -419,6 +419,9 @@ int main()
             const double cpu = (double) (b.tv_sec - a.tv_sec) + (double) (b.tv_nsec - a.tv_nsec) * 1e-9;
             std::printf ("%-28s UI thread %5.1f%% of a core\n", what, cpu / 4.0 * 100.0);
         };
+        if (juce::String (std::getenv ("ZEN_PERF")).startsWith ("long") && juce::String (std::getenv ("ZEN_PERF")) != "long")
+        { const int vis = juce::String (std::getenv ("ZEN_PERF")).getLastCharacter() - '0';
+          measure ("SYNTH, long", 0, vis); juce::MessageManager::getInstance()->runDispatchLoopUntil (40000); run = false; audio.join(); return 0; }
         if (juce::String (std::getenv ("ZEN_PERF")) == "long") { measure ("SYNTH, visuals OFF (long)", 0, 0); juce::MessageManager::getInstance()->runDispatchLoopUntil (40000); run = false; audio.join(); return 0; }
         measure ("SYNTH, visuals FULL", 0, 2);
         measure ("SYNTH, visuals LOW", 0, 1);

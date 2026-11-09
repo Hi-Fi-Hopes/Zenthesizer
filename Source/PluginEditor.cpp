@@ -929,6 +929,29 @@ void Content::paint (juce::Graphics& g)
     }
 }
 
+juce::String Content::readoutText() const
+{
+    juce::String text = hint;
+    if (text.isEmpty() && learning)
+        text = learnPlate < 0 ? "LEARN: click a key or plate, then hit a pad" : "now hit the pad for " + plates[(size_t) learnPlate]->label;
+    if (text.isEmpty() && page == synth)
+    {
+        const float hz = proc.display().cutoffHzNow.load();
+        const int voices = proc.display().activeVoices.load();
+        const auto pitchName = juce::MidiMessage::getMidiNoteName (juce::roundToInt (proc.display().lastPitch.load()), true, true, 3);
+        text = (hz < 1000.0f ? juce::String (juce::roundToInt (hz)) + " Hz" : juce::String (hz / 1000.0f, 1) + " kHz")
+             + "   -   " + juce::String (voices) + (voices == 1 ? " voice" : " voices") + "   -   " + pitchName;
+    }
+    return text;
+}
+
+juce::String Content::arpTempoText() const
+{
+    const float host = proc.hostTempo();
+    return host > 1.0f ? "following the host: " + juce::String (host, 1) + " BPM"
+                       : juce::String (juce::roundToInt (proc.getDrums().tempo)) + " BPM  -  set it with TEMPO on the BEAT page";
+}
+
 // The middle of the board (in the old slab's coordinates): page headings, the readout under the porthole.
 void Content::paintCore (juce::Graphics& g)
 {
@@ -944,27 +967,14 @@ void Content::paintCore (juce::Graphics& g)
     if (page == play && clip.intersects (arpTempoArea()))
     {
         // where the arp's tempo comes from
-        const float host = proc.hostTempo();
-        const juce::String t = host > 1.0f ? "following the host: " + juce::String (host, 1) + " BPM"
-                                           : juce::String (juce::roundToInt (proc.getDrums().tempo)) + " BPM  -  set it with TEMPO on the BEAT page";
-        theme::burnText (g, t, arpTempoArea().toFloat(), juce::Justification::centred, theme::font (theme::FontKind::sans, 10.0f, 0.12f), theme::burnSoft);
+        theme::burnText (g, arpTempoText(), arpTempoArea().toFloat(), juce::Justification::centred, theme::font (theme::FontKind::sans, 10.0f, 0.12f), theme::burnSoft);
     }
 
     // readout under the porthole, or the current hint
     const juce::Rectangle<int> readoutArea (330, 600, 320, 60);
     if (clip.intersects (readoutArea) && page != stage)
     {
-        juce::String text = hint;
-        if (text.isEmpty() && learning)
-            text = learnPlate < 0 ? "LEARN: click a key or plate, then hit a pad" : "now hit the pad for " + plates[(size_t) learnPlate]->label;
-        if (text.isEmpty() && page == synth)
-        {
-            const float hz = proc.display().cutoffHzNow.load();
-            const int voices = proc.display().activeVoices.load();
-            const auto pitchName = juce::MidiMessage::getMidiNoteName (juce::roundToInt (proc.display().lastPitch.load()), true, true, 3);
-            text = (hz < 1000.0f ? juce::String (juce::roundToInt (hz)) + " Hz" : juce::String (hz / 1000.0f, 1) + " kHz")
-                 + "   -   " + juce::String (voices) + (voices == 1 ? " voice" : " voices") + "   -   " + pitchName;
-        }
+        const juce::String text = readoutText();
         if (text.isNotEmpty())
         {
             const bool longText = text.length() > 48;
@@ -1167,7 +1177,7 @@ void Content::updateKeyLabels()
         }
         else continue;
         if (pl.subLabel != sub) { pl.subLabel = sub; pl.repaint(); }
-        if (std::abs (pl.getAlpha() - alpha) > 0.01f) pl.setAlpha (alpha);
+        pl.setFade (alpha);
     }
     for (int d = 0; d < zen::numChords; ++d)
     {
@@ -1276,10 +1286,12 @@ void Content::timerCallback()
 
     if (frame % 10 == 0)
     {
-        core.repaint (330, 600, 320, 60);       // readout
-        repaint (presetArea);       // preset name (host may change it)
-        repaint (1300, 790, 180, 30); // octave readout
-        if (page == play) core.repaint (arpTempoArea());
+        // the readouts: redrawn only when their text changes (on a tablet every redraw costs)
+        auto changed = [] (juce::String& last, const juce::String& now) { if (last == now) return false; last = now; return true; };
+        if (changed (lastReadout, page == stage ? juce::String() : readoutText()))      core.repaint (330, 600, 320, 60);
+        if (changed (lastPresetName, proc.currentPresetName()))                          repaint (presetArea);   // (the host may change it)
+        if (changed (lastOctave, juce::String (std::lround (param (ids::octave)))))      repaint (1300, 790, 180, 30);
+        if (changed (lastArpTempo, page == play ? arpTempoText() : juce::String()))      { if (page == play) core.repaint (arpTempoArea()); }
     }
 }
 
@@ -1308,9 +1320,6 @@ ZenEditor::ZenEditor (ZenProcessor& p) : AudioProcessorEditor (p), content (p)
     addChildComponent (fitBtn);
     fitBtn.onClick = [this] { zoom = 1.0f; applyZoom (true); };
     juce::Desktop::getInstance().addGlobalMouseListener (&gestures);
-    openGL.setComponentPaintingEnabled (true);
-    openGL.setContinuousRepainting (false);
-    openGL.attachTo (*this);
     content.showHint ("pinch the wood with two fingers to zoom  -  FIT zooms back out");
    #else
     constrainer.setFixedAspectRatio ((double) designW / (double) designH);
@@ -1338,7 +1347,6 @@ void ZenEditor::paint (juce::Graphics& g)
 ZenEditor::~ZenEditor()
 {
    #if JUCE_ANDROID || JUCE_IOS
-    openGL.detach();
     juce::Desktop::getInstance().removeGlobalMouseListener (&gestures);
     WoodTouch::fingersOnWood = 0;
    #endif

@@ -4,7 +4,7 @@
      GitHub Actions turns this into an Android Studio project with the Projucer, then builds the APK.
      JUCE is cloned into ./JUCE by the workflow. -->
 <JUCERPROJECT id="ZnTh01" name="Zenthesizer" projectType="audioplug" useAppConfig="0"
-              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="1.4.1"
+              addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" version="1.4.2"
               companyName="DIY Audio" bundleIdentifier="com.diyaudio.zenthesizer"
               pluginFormats="buildStandalone" pluginCharacteristicsValue="pluginIsSynth,pluginWantsMidiIn"
               pluginName="Zenthesizer" pluginDesc="Organic touch synthesizer" pluginManufacturer="DIY Audio"
@@ -51,7 +51,8 @@
                    microphonePermissionNeeded="0" androidBluetoothScanNeeded="1" androidBluetoothConnectNeeded="1"
                    smallIcon="ZnIc01" bigIcon="ZnIc01"
                    androidKeyStore="${user.home}/zen.keystore" androidKeyStorePass="zenthesizer"
-                   androidKeyAlias="zenthesizer" androidKeyAliasPass="zenthesizer">
+                   androidKeyAlias="zenthesizer" androidKeyAliasPass="zenthesizer"
+                   androidManifestCustomXmlElements="&lt;manifest&gt;&lt;application&gt;&lt;activity android:hardwareAccelerated=&quot;false&quot;/&gt;&lt;/application&gt;&lt;/manifest&gt;">
       <CONFIGURATIONS>
         <CONFIGURATION isDebug="0" name="Release" optimisation="3" androidArchitectures="arm64-v8a armeabi-v7a"/>
       </CONFIGURATIONS>
@@ -70,7 +71,6 @@
         <MODULEPATH id="juce_graphics" path="JUCE/modules"/>
         <MODULEPATH id="juce_gui_basics" path="JUCE/modules"/>
         <MODULEPATH id="juce_gui_extra" path="JUCE/modules"/>
-        <MODULEPATH id="juce_opengl" path="JUCE/modules"/>
       </MODULEPATHS>
     </ANDROIDSTUDIO>
   </EXPORTFORMATS>
@@ -89,7 +89,6 @@
     <MODULE id="juce_graphics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
     <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
     <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
-    <MODULE id="juce_opengl" showAllCode="1" useLocalCopy="0" useGlobalPath="0"/>
   </MODULES>
   <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_VST3_CAN_REPLACE_VST2="0"/>
 </JUCERPROJECT>
