@@ -165,7 +165,7 @@ private:
     // PLAY page
     juce::ComboBox rootBox, scaleBox, octaveBox, arpModeBox, arpRateBox, arpOctBox, padChanBox;
     SteelButton latchBtn { "LATCH A-D" }, arpOnBtn { "ARP" }, arpHoldBtn { "HOLD" }, padsBtn { "PADS" },
-                learnBtn { "LEARN" }, resetPadsBtn { "RESET" };
+                learnBtn { "LEARN" }, resetPadsBtn { "RESET" }, pressWheelBtn { "PRESS TO MOD" };
     WoodKnob arpGate { "GATE" };
 
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments;

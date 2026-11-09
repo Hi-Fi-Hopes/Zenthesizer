@@ -162,6 +162,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ZenProcessor::createLayout()
     choice (ids::bendRange, "Bend Range", { "1", "2", "3", "4", "5", "7", "12", "24" }, 1);
     choice (ids::mpe, "MPE", { "Off", "On, bend 12", "On, bend 24", "On, bend 48", "On, bend 96" }, 0);
     choice (ids::keyScale, "Keys Outside Scale", { "Dim", "Mute", "Snap" }, 0);
+    toggle (ids::pressWheel, "Pressure To Mod Wheel", true);
     toggle (ids::chord7, "Chord 7th", false);
     toggle (ids::chord9, "Chord 9th", false);
     toggle (ids::chordSus, "Chord Sus", false);
@@ -583,7 +584,7 @@ bool ZenProcessor::loadUserPreset (const juce::File& f)
 void ZenProcessor::applyState (const juce::ValueTree& tree, bool includePlaySettings)
 {
     static const juce::StringArray playIds { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre, ids::bendRange, ids::mpe,
-                                             ids::keyScale, ids::chord7, ids::chord9, ids::chordSus, ids::chordSpread, ids::chordStrum, ids::strumSpeed };
+                                             ids::keyScale, ids::chord7, ids::chord9, ids::chordSus, ids::chordSpread, ids::chordStrum, ids::strumSpeed, ids::pressWheel };
     if (includePlaySettings)
     {
         apvts.replaceState (tree);
@@ -674,6 +675,7 @@ zen::Settings ZenProcessor::readSettings() const
         static const int mpeRanges[] = { 0, 12, 24, 48, 96 };
         s.mpe = mpeRanges[juce::jlimit (0, 4, iv (ids::mpe))];
         s.keyScale = (zen::KeyScale) juce::jlimit (0, 2, iv (ids::keyScale));
+        s.pressToWheel = bv (ids::pressWheel);
         s.chord7 = bv (ids::chord7); s.chord9 = bv (ids::chord9); s.chordSus = bv (ids::chordSus);
         s.chordSpread = bv (ids::chordSpread); s.chordStrum = bv (ids::chordStrum); s.strumSpeed = v (ids::strumSpeed);
     }
@@ -803,7 +805,7 @@ void ZenProcessor::setCurrentProgram (int index)
 
     // Defaults first. Play settings (scale, root, octave, pads) are the player's, so they stay.
     static const juce::StringArray keep { ids::root, ids::scale, ids::octave, ids::padChannel, ids::platesFromPads, ids::latchTimbre, ids::bendRange, ids::mpe,
-                                          ids::keyScale, ids::chord7, ids::chord9, ids::chordSus, ids::chordSpread, ids::chordStrum, ids::strumSpeed };
+                                          ids::keyScale, ids::chord7, ids::chord9, ids::chordSus, ids::chordSpread, ids::chordStrum, ids::strumSpeed, ids::pressWheel };
     for (auto* param : getParameters())
         if (auto* rp = dynamic_cast<juce::RangedAudioParameter*> (param))
         {

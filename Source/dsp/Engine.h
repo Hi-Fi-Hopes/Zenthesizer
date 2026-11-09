@@ -211,6 +211,7 @@ namespace zen
         uint32_t serial = 1;
 
         float wheel = 0.0f, chanAT = 0.0f, bend = 0.0f;   // bend: -1..1 from MIDI
+        float pressWheel = 0.0f, wheelOut = 0.0f;         // with PRESS TO MOD: the hardest-pressed key also moves the wheel
         // MPE: each member channel (2..16) carries one note's bend, pressure and slide
         std::array<float, 17> chBend {}, chPress {}, chSlide {};
         float slideAll = 0.0f;   // CC74 from a non-MPE controller moves every note's slide
@@ -623,7 +624,7 @@ namespace zen
                 case Src::lfo1: return lfo1;
                 case Src::lfo2: return lfo2;
                 case Src::rand: return randOut;
-                case Src::wheel: return wheel;
+                case Src::wheel: return wheelOut;
                 case Src::chanAT: return chanAT;
                 case Src::plateA: return plates[timbrePlate0].press;
                 case Src::plateB: return plates[timbrePlate0 + 1].press;
@@ -681,6 +682,19 @@ namespace zen
             for (int p = 0; p < numPlates; ++p) plates[(size_t) p].press += (plates[(size_t) p].target - plates[(size_t) p].press) * pc;
             for (auto& v : voices)
                 if (v.active && v.plate >= 0) v.pressTarget = plates[(size_t) v.plate].target;
+
+            // the mod wheel: the wheel itself, or (PRESS TO MOD) the hardest-pressed held key if that's higher -
+            // channel aftertouch, poly aftertouch, MPE pressure and Launchkey pad pressure all count
+            {
+                float pr = 0.0f;
+                if (s.pressToWheel)
+                {
+                    pr = chanAT;
+                    for (auto& v : voices) if (v.active && v.gate) pr = std::max (pr, v.press);
+                }
+                pressWheel += (pr - pressWheel) * (1.0f - std::exp (-(float) len / (0.03f * fs)));
+                wheelOut = std::max (wheel, pressWheel);
+            }
 
             // global destinations, from global sources (+ the newest voice for per-voice sources)
             gMod.fill (0.0f);

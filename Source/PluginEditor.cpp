@@ -590,6 +590,10 @@ Content::Content (ZenProcessor& p)
         resetPadsBtn.onClick = [this] { proc.resetPadNotes(); };
         combo (bendBox, { "bend 1", "bend 2", "bend 3", "bend 4", "bend 5", "bend 7", "bend 12", "bend 24" }, ids::bendRange, { 664, 490, 84, 24 });
         combo (mpeBox, { "MPE off", "MPE, bend 12", "MPE, bend 24", "MPE, bend 48", "MPE, bend 96" }, ids::mpe, { 180, 490, 106, 24 });
+        toggle (pressWheelBtn, ids::pressWheel, { 233.0f, 440.0f });
+        place (pressWheelBtn, { 233.0f, 440.0f }, 110.0f, 54.0f, 0.0f, 23.0f);   // (wider, for its label)
+        pressWheelBtn.setTooltip ("Pressure moves the mod wheel too: leaning on a key (aftertouch, MPE pressure or pad pressure) "
+                                  "does whatever the wheel does. The wheel or the pressure, whichever is higher, wins.");
         mpeBox.setTooltip ("MPE controllers: each note on its own channel (2-16) bends, presses and slides by itself. "
                            "Pads only play plates on the pad channel you pick while MPE is on.");
 

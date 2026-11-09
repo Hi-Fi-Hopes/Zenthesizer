@@ -679,6 +679,33 @@ int main()
         CHECK (early == 1 && later == 3, "strum: notes start one after another (%d, then %d)", early, later);
     }
 
+    // 23. PRESS TO MOD: pressure (MPE, channel or poly aftertouch) moves the mod wheel; the higher of the two wins
+    {
+        auto pressMsg = [] (int at, int ch, int v) { return MidiEvent { at, (uint8_t) (0xD0 | (ch - 1)), (uint8_t) v, 0 }; };
+        auto ccMsg = [] (int at, int ch, int cc, int v) { return MidiEvent { at, (uint8_t) (0xB0 | (ch - 1)), (uint8_t) cc, (uint8_t) v }; };
+        auto wheelNow = [] (Run& r) { return r.eng.display.src[(size_t) Src::wheel].load(); };
+
+        Run m; m.s.mpe = 48;
+        m.render (9600, { on (0, 60, 100, 2), pressMsg (10, 2, 100) });
+        CHECK (std::abs (wheelNow (m) - 100.0f / 127.0f) < 0.03f, "MPE pressure moves the wheel (%.2f)", wheelNow (m));
+        m.render (9600, { off (0, 60, 2) });
+        CHECK (wheelNow (m) < 0.05f, "letting go brings the wheel back (%.2f)", wheelNow (m));
+
+        Run c;
+        c.render (9600, { ccMsg (0, 1, 1, 64), on (0, 60), pressMsg (10, 1, 30) });
+        CHECK (std::abs (wheelNow (c) - 64.0f / 127.0f) < 0.03f, "a higher wheel wins over light aftertouch (%.2f)", wheelNow (c));
+        c.render (9600, { pressMsg (0, 1, 120) });
+        CHECK (std::abs (wheelNow (c) - 120.0f / 127.0f) < 0.03f, "harder aftertouch wins over the wheel (%.2f)", wheelNow (c));
+
+        Run pa;
+        pa.render (9600, { on (0, 62), pat (10, 62, 90) });
+        CHECK (std::abs (wheelNow (pa) - 90.0f / 127.0f) < 0.03f, "poly aftertouch moves the wheel (%.2f)", wheelNow (pa));
+
+        Run o; o.s.pressToWheel = false;
+        o.render (9600, { on (0, 60), pressMsg (10, 1, 120) });
+        CHECK (wheelNow (o) < 0.01f, "with PRESS TO MOD off, pressure leaves the wheel alone (%.2f)", wheelNow (o));
+    }
+
     std::printf (failures == 0 ? "\nALL PASSED\n" : "\n%d FAILED\n", failures);
     return failures == 0 ? 0 : 1;
 }

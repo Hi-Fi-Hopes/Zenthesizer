@@ -55,6 +55,7 @@ namespace ids
     inline constexpr const char* arpGate = "arpGate"; inline constexpr const char* arpHold = "arpHold";
     inline constexpr const char* bendRange = "bendRange";
     inline constexpr const char* mpe = "mpe";
+    inline constexpr const char* pressWheel = "pressWheel";
     inline constexpr const char* keyScale = "keyScale";
     inline constexpr const char* chord7 = "chord7";   inline constexpr const char* chord9 = "chord9";
     inline constexpr const char* chordSus = "chordSus"; inline constexpr const char* chordSpread = "chordSpread";

@@ -89,6 +89,11 @@ colour. Drones and pads to loop, keys and leads to play over them. While MPE is 
 set that (for example ch 10) and, if your MPE controller can, keep its notes off that channel.
 Without MPE, CC74 from any controller moves SLIDE for every note.
 
+**PRESS TO MOD** (PLAY page, above MPE CONTROLLER, on by default): pressing into a key also moves
+the mod wheel, so pressure does whatever the wheel does. MPE pressure, channel aftertouch, poly
+aftertouch and Launchkey pad pressure all count; the hardest-pressed held key drives it, and the
+wheel or the pressure, whichever is higher, wins. The MOD strip on screen shows the result.
+
 ## Pitch and mod
 
 Two curved strips along the slab's edges, on every page: **PITCH** (left) bends and springs back

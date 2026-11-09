@@ -109,6 +109,7 @@ namespace zen
         bool chord7 = false, chord9 = false, chordSus = false, chordSpread = false, chordStrum = false;
         float strumSpeed = 0.4f;  // 0..1
         int   mpe = 0;            // 0 = off; else MPE is on and this is the per-note bend range (semitones)
+        bool  pressToWheel = true; // key pressure / aftertouch also moves the mod wheel (the higher of the two wins)
         float loopLevel = 0.8f;   // the looper's playback level
         DrumSettings drums;
 
